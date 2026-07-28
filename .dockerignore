@@ -1,0 +1,9 @@
+.DS_Store
+.git
+.mdsrv-cache
+bin
+dist
+outputs
+scratchpad
+*.log
+tmp

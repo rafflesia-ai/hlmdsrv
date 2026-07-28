@@ -1,0 +1,83 @@
+{
+  "contract": "mdsrv-self-test-core",
+  "stable": {
+    "ok": true,
+    "plan_steps": 7,
+    "quickstart_status": "disabled"
+  },
+  "shape": {
+    "checks": [
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      }
+    ],
+    "ok": "<bool>",
+    "plan": {
+      "id": "<string>",
+      "steps": [
+        {
+          "action": "<string>",
+          "input": "<string>",
+          "note": "<string>",
+          "output": "<string>",
+          "target": "<string>"
+        },
+        {
+          "action": "<string>",
+          "note": "<string>",
+          "target": "<string>"
+        },
+        {
+          "action": "<string>",
+          "note": "<string>",
+          "target": "<string>"
+        },
+        {
+          "action": "<string>",
+          "note": "<string>",
+          "output": "<string>",
+          "target": "<string>"
+        },
+        {
+          "action": "<string>",
+          "output": "<string>",
+          "target": "<string>"
+        },
+        {
+          "action": "<string>",
+          "note": "<string>",
+          "output": "<string>",
+          "target": "<string>"
+        },
+        {
+          "action": "<string>",
+          "note": "<string>",
+          "output": "<string>",
+          "target": "<string>"
+        }
+      ]
+    },
+    "quickstart_status": "<string>"
+  }
+}

@@ -1,0 +1,450 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "analyses": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "cutoff": {
+            "type": "number"
+          },
+          "format": {
+            "enum": [
+              "",
+              "csv",
+              "json"
+            ],
+            "type": "string"
+          },
+          "frames": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "output": {
+            "type": "string"
+          },
+          "reference_frame": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "selection": {
+            "type": "string"
+          },
+          "selections": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "inputs": {
+      "additionalProperties": false,
+      "properties": {
+        "topology": {
+          "additionalProperties": false,
+          "anyOf": [
+            {
+              "required": [
+                "path"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            }
+          ],
+          "properties": {
+            "atom_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "bytes": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "coordinate_unit": {
+              "type": "string"
+            },
+            "format": {
+              "type": "string"
+            },
+            "frame_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "original_path": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string"
+            },
+            "time_end": {
+              "type": "number"
+            },
+            "time_start": {
+              "type": "number"
+            },
+            "time_step": {
+              "type": "number"
+            },
+            "time_unit": {
+              "type": "string"
+            },
+            "url": {
+              "format": "uri",
+              "type": "string"
+            }
+          },
+          "required": [
+            "format"
+          ],
+          "type": "object"
+        },
+        "trajectories": {
+          "items": {
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "path"
+                ]
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ],
+            "properties": {
+              "atom_count": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "bytes": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "coordinate_unit": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string"
+              },
+              "frame_count": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "original_path": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "time_end": {
+                "type": "number"
+              },
+              "time_start": {
+                "type": "number"
+              },
+              "time_step": {
+                "type": "number"
+              },
+              "time_unit": {
+                "type": "string"
+              },
+              "url": {
+                "format": "uri",
+                "type": "string"
+              }
+            },
+            "required": [
+              "format"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "topology",
+        "trajectories"
+      ],
+      "type": "object"
+    },
+    "metadata": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "created_by": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "outputs": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "type": {
+            "examples": [
+              "mdsrvx",
+              "archive",
+              "manifest",
+              "server-store"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "path"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "processing": {
+      "additionalProperties": false,
+      "properties": {
+        "atom_subset": {
+          "type": "string"
+        },
+        "pbc": {
+          "additionalProperties": false,
+          "properties": {
+            "center": {
+              "type": "string"
+            },
+            "superpose": {
+              "additionalProperties": false,
+              "properties": {
+                "reference_frame": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "selection": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "unwrap": {
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "stride": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "runtime": {
+      "additionalProperties": false,
+      "properties": {
+        "max_atoms": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_chunk_bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_frames": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "timeout_seconds": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "selections": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "atom_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": {
+            "type": "string"
+          },
+          "expression": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "examples": [
+              "atom-index",
+              "mdtraj",
+              "mdanalysis",
+              "mvs"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "expression"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "streaming": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_atom_subset_queries": {
+          "type": "boolean"
+        },
+        "cache": {
+          "type": "string"
+        },
+        "chunk_size_frames": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "encoding": {
+          "examples": [
+            "mdsrv-frame-v1",
+            "mdsrv-frames-json-v1",
+            "mdsrv-frames-bin-v1",
+            "mdsrv-frames-bin-zstd-v1"
+          ],
+          "type": "string"
+        },
+        "frame_index": {
+          "type": "string"
+        },
+        "materialize_chunks": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "version": {
+      "const": "mdsrv.job/v1"
+    },
+    "visualization": {
+      "additionalProperties": false,
+      "properties": {
+        "camera": {
+          "additionalProperties": false,
+          "properties": {
+            "focus": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "molstar": {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "mvs": {
+          "additionalProperties": false,
+          "properties": {
+            "scene": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "sessions": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "is_sticky": {
+                "type": "boolean"
+              },
+              "path": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "version",
+    "metadata",
+    "inputs"
+  ],
+  "title": "MDsrv Headless Manifest and Run Job",
+  "type": "object"
+}

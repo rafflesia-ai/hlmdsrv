@@ -1,0 +1,31 @@
+{
+  "contract": "mdsrv-run-plan",
+  "stable": {
+    "first_step": "ingest",
+    "id": "contract-run",
+    "steps_count": 3
+  },
+  "shape": {
+    "id": "<string>",
+    "steps": [
+      {
+        "action": "<string>",
+        "input": "<string>",
+        "note": "<string>",
+        "output": "<string>",
+        "target": "<string>"
+      },
+      {
+        "action": "<string>",
+        "note": "<string>",
+        "target": "<string>"
+      },
+      {
+        "action": "<string>",
+        "note": "<string>",
+        "output": "<string>",
+        "target": "<string>"
+      }
+    ]
+  }
+}

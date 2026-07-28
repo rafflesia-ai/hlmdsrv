@@ -1,0 +1,31 @@
+{
+  "contract": "mdsrv-http-jobs-list",
+  "stable": {
+    "count": 1,
+    "status": 200
+  },
+  "shape": {
+    "body": [
+      {
+        "created_at": "<string>",
+        "dataset_id": "<string>",
+        "error": "<string>",
+        "finished_at": "<string>",
+        "id": "<string>",
+        "request": {
+          "analysis": {
+            "id": "<string>",
+            "type": "<string>"
+          },
+          "chunk_size": "<number>",
+          "dataset_id": "<string>",
+          "encoding": "<string>",
+          "type": "<string>"
+        },
+        "status": "<string>",
+        "type": "<string>"
+      }
+    ],
+    "status": "<number>"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "contract": "mdsrv-run-report",
+  "stable": {
+    "artifacts_count": 3,
+    "id": "contract-run",
+    "timings_count": 1
+  },
+  "shape": {
+    "artifacts": [
+      {
+        "type": "<string>"
+      },
+      {
+        "type": "<string>"
+      },
+      {
+        "type": "<string>"
+      }
+    ],
+    "id": "<string>",
+    "timings": [
+      {
+        "step": "<string>",
+        "target": "<string>"
+      }
+    ]
+  }
+}

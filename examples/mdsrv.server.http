@@ -1,0 +1,89 @@
+### Start a writable development server
+# go run ./cmd/hlmdsrv serve --store ./mdsrv-data --port 1337 --log-requests
+
+### Start a published read-only server
+# go run ./cmd/hlmdsrv serve --store ./mdsrv-data --host 0.0.0.0 --port 1337 --read-only --log-requests --request-timeout 30s --max-frame-range 128 --allow-path "$PWD/mdsrv-data" --auth-token "$MDSRV_AUTH_TOKEN"
+
+### Health and capabilities
+GET http://127.0.0.1:1337/health
+
+###
+GET http://127.0.0.1:1337/capabilities
+
+### Authenticated request when --auth-token is enabled
+GET http://127.0.0.1:1337/datasets
+Authorization: Bearer {{$dotenv MDSRV_AUTH_TOKEN}}
+
+### Dataset catalog
+GET http://127.0.0.1:1337/datasets
+
+### Create a dataset from local files available to the server process
+POST http://127.0.0.1:1337/datasets
+Content-Type: application/json
+
+{
+  "id": "run1",
+  "name": "Run 1",
+  "topology": "structure.gro",
+  "trajectory": "trajectory.xtc",
+  "force": true
+}
+
+### Inspect dataset metadata
+GET http://127.0.0.1:1337/datasets/run1/metadata
+
+### Build and fetch the frame index sidecar
+POST http://127.0.0.1:1337/datasets/run1/frames/index?chunk_size=128
+
+###
+GET http://127.0.0.1:1337/datasets/run1/frames/index
+
+### Fetch frames
+GET http://127.0.0.1:1337/datasets/run1/frames/count?backend=auto
+
+###
+GET http://127.0.0.1:1337/datasets/run1/frames/2?format=json&backend=auto
+
+###
+GET http://127.0.0.1:1337/datasets/run1/frames/range?start=0&stop=10&stride=2&backend=auto
+
+### Selections
+POST http://127.0.0.1:1337/datasets/run1/selections
+Content-Type: application/json
+
+{
+  "id": "first-two",
+  "kind": "atom-index",
+  "expression": "1-2"
+}
+
+###
+GET http://127.0.0.1:1337/datasets/run1/selections/first-two
+
+### Analysis trace
+POST http://127.0.0.1:1337/datasets/run1/analyses?backend=gromacs
+Content-Type: application/json
+
+{
+  "id": "distance",
+  "type": "distance",
+  "selections": {
+    "a": "1",
+    "b": "2"
+  },
+  "output": "traces/run1-distance.csv"
+}
+
+### Sessions
+POST http://127.0.0.1:1337/sessions
+Content-Type: application/json
+
+{
+  "id": "run1-session",
+  "dataset_id": "run1",
+  "file": "session.molj",
+  "force": true
+}
+
+###
+GET http://127.0.0.1:1337/sessions

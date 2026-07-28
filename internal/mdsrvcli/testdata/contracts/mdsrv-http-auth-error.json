@@ -1,0 +1,15 @@
+{
+  "contract": "mdsrv-http-auth-error",
+  "stable": {
+    "code": "unauthorized",
+    "status": 401
+  },
+  "shape": {
+    "body": {
+      "code": "<string>",
+      "error": "<string>",
+      "request_id": "<string>"
+    },
+    "status": "<number>"
+  }
+}

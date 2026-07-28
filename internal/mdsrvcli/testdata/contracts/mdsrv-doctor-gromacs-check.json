@@ -1,0 +1,16 @@
+{
+  "contract": "mdsrv-doctor-gromacs-check",
+  "stable": {
+    "level": "recommended",
+    "name": "gromacs",
+    "ok": false
+  },
+  "shape": {
+    "hint": "<string>",
+    "level": "<string>",
+    "message": "<string>",
+    "name": "<string>",
+    "ok": "<bool>",
+    "remediation": "<string>"
+  }
+}

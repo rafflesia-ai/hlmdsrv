@@ -1,0 +1,17 @@
+.DS_Store
+__pycache__/
+*.pyc
+bin
+dist
+outputs
+.mdsrv-cache
+.mdsrv-runs
+
+# compiled binary built into the repo root (reproducible via go build)
+/hlmdsrv
+err.txt
+
+# Repo-local scratch working area. Expensive generated artifacts belong on
+# external storage, never in the repo. Ignoring this keeps a stray `git add -A`
+# from sweeping throwaway fixtures, binaries, and stores in.
+scratchpad/

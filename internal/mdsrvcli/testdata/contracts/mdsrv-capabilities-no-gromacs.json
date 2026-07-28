@@ -1,0 +1,40 @@
+{
+  "contract": "mdsrv-capabilities-no-gromacs",
+  "stable": {
+    "chunk_encodings_count": 3,
+    "gromacs_available": false,
+    "gromacs_source": "option",
+    "manifest_version": "mdsrv.job/v1",
+    "ok": true
+  },
+  "shape": {
+    "features": {
+      "analysis": "<bool>",
+      "chunk_encodings": [
+        "<string>",
+        "<string>",
+        "<string>"
+      ],
+      "dataset_writes": "<bool>",
+      "datasets": "<bool>",
+      "frame_decoding": "<bool>",
+      "frame_index": "<bool>",
+      "frame_ranges": "<bool>",
+      "gromacs_extraction": "<bool>",
+      "selections": "<bool>",
+      "sessions": "<bool>",
+      "streaming_baseline": [
+        "<string>"
+      ]
+    },
+    "gromacs": {
+      "available": "<bool>",
+      "command": "<string>",
+      "hint": "<string>",
+      "message": "<string>",
+      "source": "<string>"
+    },
+    "manifest_version": "<string>",
+    "ok": "<bool>"
+  }
+}

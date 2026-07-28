@@ -1,0 +1,89 @@
+version: 2
+
+project_name: hlmdsrv
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: hlmdsrv
+    main: ./cmd/hlmdsrv
+    binary: hlmdsrv
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/rafflesia-ai/hlmdsrv/internal/mdsrvcli.buildVersion={{ .Version }}
+      - -X github.com/rafflesia-ai/hlmdsrv/internal/mdsrvcli.buildCommit={{ .Commit }}
+      - -X github.com/rafflesia-ai/hlmdsrv/internal/mdsrvcli.buildDate={{ .Date }}
+
+archives:
+  - id: cli-archives
+    ids:
+      - hlmdsrv
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    format_overrides:
+      - goos: darwin
+        formats:
+          - zip
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - completions/**/*
+      - docs/**/*
+      - examples/**/*
+      - schema/**/*
+      - scripts/**/*
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+homebrew_casks:
+  - name: hlmdsrv
+    repository:
+      owner: rafflesia-ai
+      name: homebrew-tap
+    directory: Casks
+    homepage: https://github.com/rafflesia-ai/hlmdsrv
+    description: Headless MDsrv trajectory dataset and session manager for agents
+    ids:
+      - cli-archives
+    binaries:
+      - hlmdsrv
+
+dockers_v2:
+  - images:
+      - ghcr.io/rafflesia-ai/hlmdsrv
+    tags:
+      - "{{ .Version }}"
+      - latest
+    dockerfile: Dockerfile
+    platforms:
+      - linux/amd64
+    flags:
+      - "--platform=linux/amd64"

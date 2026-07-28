@@ -1,0 +1,11 @@
+{
+  "contract": "mdsrv-batch-jsonl",
+  "stable": {
+    "id": "contract-batch",
+    "index": 0
+  },
+  "shape": {
+    "id": "<string>",
+    "index": "<number>"
+  }
+}

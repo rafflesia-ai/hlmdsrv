@@ -1,0 +1,65 @@
+{
+  "contract": "mdsrv-store-doctor",
+  "stable": {
+    "checks_count": 12,
+    "expected_version": "mdsrv.store/v1",
+    "ok": true,
+    "version": "mdsrv.store/v1"
+  },
+  "shape": {
+    "checks": [
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      },
+      {
+        "name": "<string>",
+        "ok": "<bool>"
+      }
+    ],
+    "expected_version": "<string>",
+    "migrations": null,
+    "ok": "<bool>",
+    "version": "<string>"
+  }
+}

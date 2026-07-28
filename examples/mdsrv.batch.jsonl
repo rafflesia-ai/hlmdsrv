@@ -1,0 +1,1 @@
+{"id":"run1","name":"Run 1","topology":"raw/structure.gro","trajectory":"raw/trajectory.xtc","source":"doi:10.xxxx/yyyy","stride":10,"atom_subset":"not water and not hydrogen"}

@@ -1,0 +1,58 @@
+version: mdsrv.job/v1
+metadata:
+  id: a2a-cholesterol-r1
+  name: A2A cholesterol entry, replica 1
+  description: Cholesterol entering the A2A receptor binding pocket.
+  source: doi:10.xxxx/yyyy
+  license: CC-BY-4.0
+  created_by: lab-pipeline
+runtime:
+  max_atoms: 250000
+  max_frames: 100000
+  max_chunk_bytes: 104857600
+  timeout_seconds: 1800
+inputs:
+  topology:
+    path: topology/a2a-cholesterol-r1.gro
+    format: gro
+    sha256: replace-with-real-checksum
+  trajectories:
+    - path: trajectory/a2a-cholesterol-r1.xtc
+      format: xtc
+      sha256: replace-with-real-checksum
+      time_unit: ps
+      coordinate_unit: nm
+processing:
+  stride: 10
+  atom_subset: not water and not hydrogen
+  pbc:
+    center: protein
+    superpose:
+      selection: protein and name CA
+      reference_frame: 0
+streaming:
+  encoding: mdsrv-frames-bin-zstd-v1
+  cache: chunks/a2a-cholesterol-r1
+  chunk_size_frames: 128
+  materialize_chunks: true
+  allow_atom_subset_queries: true
+analyses:
+  - id: chol-distance
+    type: distance
+    selections:
+      a: chain A and resid 57 and name H
+      b: resname CHL and name O3
+    frames: all
+    output: traces/chol-distance.csv
+visualization:
+  mvs:
+    scene: visualization/scene.mvsj
+  molstar:
+    state: visualization/session.molj
+  camera:
+    focus: resname CHL
+outputs:
+  - type: manifest
+    path: datasets/a2a-cholesterol-r1.yaml
+  - type: server-store
+    path: .

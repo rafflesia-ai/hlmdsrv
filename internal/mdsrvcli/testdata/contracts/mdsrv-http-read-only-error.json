@@ -1,0 +1,15 @@
+{
+  "contract": "mdsrv-http-read-only-error",
+  "stable": {
+    "code": "forbidden",
+    "status": 403
+  },
+  "shape": {
+    "body": {
+      "code": "<string>",
+      "error": "<string>",
+      "request_id": "<string>"
+    },
+    "status": "<number>"
+  }
+}

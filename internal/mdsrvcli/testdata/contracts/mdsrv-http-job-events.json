@@ -1,0 +1,59 @@
+{
+  "contract": "mdsrv-http-job-events",
+  "stable": {
+    "events_count": 4,
+    "status": 200
+  },
+  "shape": {
+    "body": {
+      "events": [
+        {
+          "at": "<string>",
+          "fields": {
+            "dataset_id": "<string>",
+            "type": "<string>"
+          },
+          "id": "<string>",
+          "message": "<string>",
+          "status": "<string>",
+          "type": "<string>",
+          "version": "<string>"
+        },
+        {
+          "at": "<string>",
+          "id": "<string>",
+          "message": "<string>",
+          "status": "<string>",
+          "type": "<string>",
+          "version": "<string>"
+        },
+        {
+          "at": "<string>",
+          "fields": {
+            "chunk_size": "<number>",
+            "encoding": "<string>",
+            "force": "<bool>"
+          },
+          "id": "<string>",
+          "message": "<string>",
+          "status": "<string>",
+          "type": "<string>",
+          "version": "<string>"
+        },
+        {
+          "at": "<string>",
+          "fields": {
+            "error": "<string>"
+          },
+          "id": "<string>",
+          "message": "<string>",
+          "status": "<string>",
+          "type": "<string>",
+          "version": "<string>"
+        }
+      ],
+      "id": "<string>"
+    },
+    "status": "<number>"
+  }
+}

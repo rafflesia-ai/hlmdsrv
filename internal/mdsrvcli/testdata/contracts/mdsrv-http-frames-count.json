@@ -1,0 +1,20 @@
+{
+  "contract": "mdsrv-http-frames-count",
+  "stable": {
+    "frame_count": 4,
+    "status": 200
+  },
+  "shape": {
+    "body": {
+      "atoms": "<number>",
+      "backend": "<string>",
+      "coordinate_unit": "<string>",
+      "first_time": "<number>",
+      "has_unit_cell": "<bool>",
+      "last_time": "<number>",
+      "time_unit": "<string>",
+      "topology_atoms": "<number>"
+    },
+    "status": "<number>"
+  }
+}

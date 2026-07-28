@@ -1,0 +1,19 @@
+{
+  "contract": "mdsrv-http-datasets",
+  "stable": {
+    "count": 1,
+    "id": "run1",
+    "status": 200
+  },
+  "shape": {
+    "body": [
+      {
+        "atom_count": "<number>",
+        "frame_count": "<number>",
+        "id": "<string>",
+        "name": "<string>"
+      }
+    ],
+    "status": "<number>"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "contract": "mdsrv-http-health",
+  "stable": {
+    "body": "ok",
+    "status": 200
+  },
+  "shape": {
+    "body": {
+      "status": "<string>"
+    },
+    "status": "<number>"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "contract": "mdsrv-http-capabilities",
+  "stable": {
+    "job_queue": true,
+    "max_frame_range": 2,
+    "status": 200,
+    "workers": 1
+  },
+  "shape": {
+    "body": {
+      "analysis": "<bool>",
+      "auth_required": "<bool>",
+      "chunk_encodings": [
+        "<string>",
+        "<string>",
+        "<string>"
+      ],
+      "dataset_writes": "<bool>",
+      "datasets": "<bool>",
+      "file_serving": "<bool>",
+      "frame_decoding": "<bool>",
+      "frame_index": "<bool>",
+      "frame_ranges": "<bool>",
+      "gromacs_extraction": "<bool>",
+      "job_prune_on_start": "<bool>",
+      "job_queue": "<bool>",
+      "job_timeout_seconds": "<number>",
+      "job_ttl_seconds": "<number>",
+      "max_atoms": "<number>",
+      "max_chunk_bytes": "<number>",
+      "max_frame_range": "<number>",
+      "max_frames": "<number>",
+      "max_queue": "<number>",
+      "metadata": "<bool>",
+      "read_only": "<bool>",
+      "selections": "<bool>",
+      "sessions": "<bool>",
+      "streaming_baseline": [
+        "<string>"
+      ],
+      "workers": "<number>"
+    },
+    "status": "<number>"
+  }
+}
