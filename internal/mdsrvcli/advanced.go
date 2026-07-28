@@ -276,6 +276,9 @@ func (a app) packCommand() *cobra.Command {
 			if err := rejectNonRegularOutput(out); err != nil {
 				return err
 			}
+			if info, statErr := os.Stat(out); statErr == nil && info.IsDir() {
+				return codedErrorf(codeInvalidInput, "%s is a directory, not a file; --out must name a .mdsrvx file", out)
+			}
 			packManifest, err := store.LoadDataset(args[0])
 			if err != nil {
 				return err

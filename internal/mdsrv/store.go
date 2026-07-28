@@ -777,7 +777,29 @@ func isHiddenSidecar(path string) bool {
 	return strings.HasPrefix(filepath.Base(path), ".")
 }
 
+// RequireExisting reports whether the store root is actually a store directory.
+// OpenStore only resolves a path, so pointing --store at a missing path or at a
+// regular file used to read as an empty-but-valid store: `list datasets` printed
+// null and exited 0, which is indistinguishable from a real store holding no
+// datasets.
+func (s Store) RequireExisting() error {
+	info, err := os.Stat(s.Root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("store %s does not exist", s.Root)
+		}
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("store %s is not a directory", s.Root)
+	}
+	return nil
+}
+
 func (s Store) ListDatasets() ([]DatasetSummary, error) {
+	if err := s.RequireExisting(); err != nil {
+		return nil, err
+	}
 	matches, err := filepath.Glob(filepath.Join(s.Root, DatasetsDir, "*.yaml"))
 	if err != nil {
 		return nil, err

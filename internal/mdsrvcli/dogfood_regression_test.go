@@ -381,6 +381,88 @@ func TestRejectNonRegularPathGuardsBothDirections(t *testing.T) {
 	}
 }
 
+// Third-pass audit: a directory stats with a non-zero size, so the "did the tool
+// produce the file?" check passed an --out that was an empty directory and
+// reported a trajectory export that produced nothing.
+func TestRequireProducedFileRejectsADirectory(t *testing.T) {
+	dir := t.TempDir()
+	if err := requireProducedFile(dir, "gromacs export"); err == nil {
+		t.Fatal("a directory must not pass as a produced file")
+	} else if ErrorCode(err) != string(codeInvalidInput) {
+		t.Errorf("code = %q, want %q", ErrorCode(err), codeInvalidInput)
+	}
+}
+
+// Every caller of ensureOutputPath writes a single file, so a directory target
+// must be refused up front rather than handed to the tool.
+func TestEnsureOutputPathRejectsADirectory(t *testing.T) {
+	dir := t.TempDir()
+	err := ensureOutputPathAgainst(dir, true)
+	if err == nil {
+		t.Fatal("a directory --out must be refused")
+	}
+	if ErrorCode(err) != string(codeInvalidInput) {
+		t.Errorf("code = %q, want %q", ErrorCode(err), codeInvalidInput)
+	}
+}
+
+// A --store pointing at a missing path or a regular file used to read as an
+// empty-but-valid store: `list datasets` printed null and exited 0, which is
+// indistinguishable from a real store holding no datasets.
+func TestStoreRequireExisting(t *testing.T) {
+	dir := t.TempDir()
+	regular := filepath.Join(dir, "afile")
+	if err := os.WriteFile(regular, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	missing, err := mdsrv.OpenStore(filepath.Join(dir, "absent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := missing.ListDatasets(); err == nil {
+		t.Error("listing a store that does not exist must fail, not report zero datasets")
+	} else if ErrorCode(err) != string(codeMissingInput) {
+		t.Errorf("missing store: code = %q, want %q", ErrorCode(err), codeMissingInput)
+	}
+
+	notDir, err := mdsrv.OpenStore(regular)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := notDir.ListDatasets(); err == nil {
+		t.Error("listing a store that is a regular file must fail")
+	} else if ErrorCode(err) != string(codeInvalidInput) {
+		t.Errorf("file store: code = %q, want %q", ErrorCode(err), codeInvalidInput)
+	}
+
+	real, err := mdsrv.OpenStore(filepath.Join(dir, "store"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := real.Init(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := real.ListDatasets(); err != nil {
+		t.Errorf("a real store must list cleanly: %v", err)
+	}
+}
+
+// The classifier decides the exit code from the message, so these shapes must not
+// fall through to internal_error, documented as "unclassified, report it".
+func TestClassifierCoversPathShapeFailures(t *testing.T) {
+	for message, want := range map[string]errorCode{
+		"store /x is not a directory":                codeInvalidInput,
+		"/x is a directory, not a file":              codeInvalidInput,
+		"/x is not a regular file":                   codeInvalidInput,
+		"store /x does not exist":                    codeMissingInput,
+		`gromacs command "true" is not usable: nope`: codeMissingBackend,
+	} {
+		if got := classifyErrorCode(errors.New(message)); got != want {
+			t.Errorf("classify(%q) = %q, want %q", message, got, want)
+		}
+	}
+}
+
 // Finding #9: publishing a store that does not exist reported success with
 // files:null and left an empty output directory behind.
 func TestPublishRejectsMissingStore(t *testing.T) {

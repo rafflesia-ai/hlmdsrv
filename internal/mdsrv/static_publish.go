@@ -42,6 +42,11 @@ func (s Store) PublishStatic(out string, force bool) (StaticPublishReport, error
 	if relativeOut == "." || (relativeOut != ".." && !strings.HasPrefix(relativeOut, ".."+string(filepath.Separator))) {
 		return StaticPublishReport{}, fmt.Errorf("static publish output must be outside the source store")
 	}
+	// MkdirAll on an existing regular file fails with a bare ENOTDIR that reached
+	// the caller as internal_error; name the actual problem instead.
+	if info, statErr := os.Stat(absoluteOut); statErr == nil && !info.IsDir() {
+		return StaticPublishReport{}, fmt.Errorf("publish output %s is not a directory", absoluteOut)
+	}
 	report := StaticPublishReport{Store: s.Root, Out: absoluteOut}
 	if err := os.MkdirAll(absoluteOut, 0o755); err != nil {
 		return StaticPublishReport{}, err

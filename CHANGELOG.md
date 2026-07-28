@@ -81,6 +81,27 @@ wired where they were probed by hand.
 - **`ingest` validates its local `--topology`/`--trajectory`** instead of
   surfacing a directory as `internal_error`.
 
+### Fixed — third-pass audit
+
+A pass over surfaces the first two rounds never touched.
+
+- **A directory passed as a successfully produced file.** A directory stats with
+  a non-zero size, so `export --out <existing dir>` reported success against an
+  empty directory. Both the produced-file check and the shared output-path guard
+  now reject a directory outright.
+- **`--store` pointing at a missing path or a regular file read as an empty
+  store**: `list datasets` printed `null` and exited 0, indistinguishable from a
+  real store with no datasets. It now fails with `missing_input` or
+  `invalid_input`.
+- **More `internal_error` misclassification**: `publish static --out <regular
+  file>`, `pack --out <dir>`, and malformed or empty batch JSONL all exited 1.
+
+Probed and found correct, so deliberately unchanged: `.mdsrvx` archive extraction
+rejects path traversal (`../`, absolute, and nested forms) with `unsafe_path` and
+creates nothing outside the store; the HTTP server enforces auth (401), read-only
+(403), and does not serve store files through a traversed path; eight concurrent
+exports to one `--out` produce a valid trajectory.
+
 Initial extraction of the headless MDsrv CLI from
 [sacha-ichbiah/headlessmolstar](https://github.com/sacha-ichbiah/headlessmolstar) into its own repo.
 

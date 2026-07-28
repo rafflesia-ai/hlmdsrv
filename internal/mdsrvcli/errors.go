@@ -125,9 +125,18 @@ func classifyErrorCode(err error) errorCode {
 		strings.Contains(message, "job requires at least one trajectory"):
 		return codeInvalidManifest
 	case strings.Contains(message, "gromacs command") && strings.Contains(message, "not found"),
+		strings.Contains(message, "gromacs command") && strings.Contains(message, "not usable"),
 		strings.Contains(message, "python backend failed"),
 		strings.Contains(message, "trajectory backend"):
 		return codeMissingBackend
+	// A path that exists but is the wrong kind of thing, or an output the caller
+	// pointed somewhere unusable. These are fixable at the call site, so they must
+	// not fall through to internal_error, which the error table reserves for
+	// "unclassified, report it".
+	case strings.Contains(message, "is not a directory"),
+		strings.Contains(message, "is a directory"),
+		strings.Contains(message, "is not a regular file"):
+		return codeInvalidInput
 	case strings.Contains(message, "deadline exceeded"),
 		strings.Contains(message, "timed out"),
 		strings.Contains(message, "timeout"):
@@ -148,6 +157,7 @@ func classifyErrorCode(err error) errorCode {
 		return codeRenderFailed
 	case strings.Contains(message, "not found"),
 		strings.Contains(message, "no such file"),
+		strings.Contains(message, "does not exist"),
 		strings.Contains(message, "is required"):
 		return codeMissingInput
 	default:

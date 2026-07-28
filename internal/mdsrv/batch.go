@@ -97,7 +97,9 @@ func loadBatchJSONL(path string) ([]BatchJob, error) {
 		}
 		var job BatchJob
 		if err := json.Unmarshal(raw, &job); err != nil {
-			return nil, fmt.Errorf("%s:%d: %w", path, line, err)
+			// Name the failure "decode json" so it classifies as a malformed input the
+			// caller can fix, rather than falling through to internal_error.
+			return nil, fmt.Errorf("%s:%d: decode json batch line: %w", path, line, err)
 		}
 		jobs = append(jobs, job)
 	}
@@ -105,7 +107,7 @@ func loadBatchJSONL(path string) ([]BatchJob, error) {
 		return nil, err
 	}
 	if len(jobs) == 0 {
-		return nil, fmt.Errorf("%s does not contain any batch jobs", path)
+		return nil, fmt.Errorf("decode json batch: %s does not contain any batch jobs", path)
 	}
 	return jobs, nil
 }

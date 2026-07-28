@@ -325,6 +325,12 @@ func requireProducedFile(path, produced string) error {
 	if err != nil {
 		return codedErrorf(codeRenderFailed, "%s reported success but %s was not created", produced, path)
 	}
+	// A directory must be rejected explicitly: it stats with a non-zero size, so a
+	// bare size check passes an --out that is an empty directory and reports a
+	// trajectory export that produced nothing.
+	if info.IsDir() {
+		return codedErrorf(codeInvalidInput, "%s is a directory, not a file; --out must name a file", path)
+	}
 	if info.Size() == 0 {
 		return codedErrorf(codeRenderFailed, "%s reported success but %s is empty", produced, path)
 	}
@@ -397,7 +403,12 @@ func rejectNonRegularPath(path, verb string) error {
 func ensureOutputPathAgainst(path string, force bool, inputs ...string) error {
 	info, err := os.Stat(path)
 	switch {
-	case err == nil && !info.Mode().IsRegular() && !info.IsDir():
+	case err == nil && info.IsDir():
+		// Every caller of this helper writes a single file. A directory target
+		// otherwise slipped through to the tool, which either failed obscurely
+		// (internal_error) or "succeeded" against a path it never wrote.
+		return codedErrorf(codeInvalidInput, "%s is a directory, not a file; --out must name a file", path)
+	case err == nil && !info.Mode().IsRegular():
 		return codedErrorf(codeInvalidInput, "%s is not a regular file; refusing to write to it", path)
 	case err == nil && !force:
 		return fmt.Errorf("%s already exists; pass --force to overwrite", path)
