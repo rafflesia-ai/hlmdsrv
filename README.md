@@ -167,8 +167,10 @@ docker build -t hlmdsrv:local .
 docker run --rm hlmdsrv:local doctor --json
 ```
 
-The image bundles the CLI, Python 3, MDTraj, and MDAnalysis. GROMACS is not included — mount a host
-install or extend the image if you need the GROMACS bridge.
+The image bundles the CLI, Python 3, and MDTraj. Add MDAnalysis with
+`--build-arg MDSRV_PYTHON_BACKENDS=full`. GROMACS is not included — mount a host install or extend
+the image if you need the GROMACS bridge, so `doctor` in the stock image reports the GROMACS check as
+failing while every *required* check passes.
 
 ## Provenance
 

@@ -17,9 +17,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      # Not pinned to the go.mod floor (1.22): the Go 1.22 linker emits Mach-O
+      # binaries without an LC_UUID load command, which dyld on current macOS
+      # arm64 runners rejects with "abort trap" before any test runs. The floor
+      # itself is still guarded by the go-floor job below.
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22.x"
+          go-version: "stable"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -28,6 +32,18 @@ jobs:
       - run: go test ./...
       - name: Verify frozen JSON contracts
         run: ./scripts/verify-mdsrv-contracts.sh
+
+  # Guards the `go 1.22` directive in go.mod: the module must still compile on
+  # its declared minimum. Linux only, where the 1.22 toolchain is healthy.
+  go-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+      - run: go build ./...
+      - run: go test ./...
 
   generated-assets:
     runs-on: ubuntu-latest
