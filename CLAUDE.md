@@ -43,8 +43,9 @@ archive format, and the `MDSRV_*` environment variables (`MDSRV_PYTHON`, `MDSRV_
 
 ## Generated assets
 
-`docs/cli/**` and `completions/**` are generated from the binary and verified in CI. After changing
-any command, flag, or help string, regenerate them or CI fails on drift:
+`docs/cli/**` and `completions/**` are generated from the binary. There is no CI in this repo,
+so nothing checks them for you: after changing any command, flag, or help string, regenerate them
+by hand or the shipped docs silently drift out of date.
 
 ```sh
 go build -o bin/hlmdsrv ./cmd/hlmdsrv
