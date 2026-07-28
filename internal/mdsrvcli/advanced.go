@@ -510,6 +510,7 @@ func (a app) runAnalyze(ctx context.Context, datasetID, kind string, flags *anal
 			Frames:         "all",
 			Output:         recordedOutput,
 			Backend:        trace.Backend,
+			Unit:           trace.Unit,
 		}); err != nil {
 			return err
 		}
@@ -521,6 +522,7 @@ func (a app) runAnalyze(ctx context.Context, datasetID, kind string, flags *anal
 			"id":       request.ID,
 			"type":     kind,
 			"backend":  trace.Backend,
+			"unit":     trace.Unit,
 			"path":     outputPath,
 			"format":   flags.format,
 			"values":   len(trace.Values),

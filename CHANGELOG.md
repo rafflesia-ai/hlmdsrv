@@ -96,6 +96,30 @@ A pass over surfaces the first two rounds never touched.
 - **More `internal_error` misclassification**: `publish static --out <regular
   file>`, `pack --out <dir>`, and malformed or empty batch JSONL all exited 1.
 
+### Fixed — seventh pass (units, empty collections)
+
+First round with MDAnalysis installed, so the second Python engine was exercised.
+
+- **The engines report different units.** MDTraj emits `nm`, MDAnalysis emits
+  `angstrom`, for the same analysis. Only the CSV carried the unit, so a manifest
+  could hold two analyses of one type whose values were an order of magnitude
+  apart with nothing at the manifest or report level saying so. Stored analyses
+  and the `--json` report now carry `unit` alongside `backend`.
+- **Empty lists marshalled to `null`.** `list datasets` and `selection list`
+  returned `null` when empty while `session list` returned `[]` — one CLI
+  disagreeing with itself about the shape of "nothing", forcing a consumer to
+  null-check some list endpoints but not others. All now emit `[]`.
+
+Measured while comparing engines, worth recording: on a demo trajectory
+**MDAnalysis and GROMACS agree on rmsd** (0.12910 Å vs 0.01291 nm — the same
+value), and **MDTraj is the outlier**, differing by ~2.45×. All three are now
+self-describing via `backend` and `unit`.
+
+Probed and found correct: `--profile` precedence is exactly right — an explicit
+`--store` beats the profile, `MDSRV_PROFILE` works as an env alternative to
+`--profile`, and an unknown profile fails with a message naming both the profile
+and the config file it looked in.
+
 ### Fixed — sixth pass (analyze bridge, selections)
 
 First round with a real MDTraj install, so the Python analysis bridge was

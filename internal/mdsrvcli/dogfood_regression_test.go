@@ -647,6 +647,65 @@ func TestValidateSelectionKind(t *testing.T) {
 	}
 }
 
+// Seventh pass: a nil slice marshals to JSON null, so an empty store's dataset
+// list came back as null while session list — which pre-allocates — came back as
+// []. One CLI disagreeing with itself about the shape of "nothing" forces a
+// consumer to null-check some list endpoints but not others.
+func TestEmptyListsMarshalAsArrays(t *testing.T) {
+	store, err := mdsrv.OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	datasets, err := store.ListDatasets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(datasets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(encoded) != "[]" {
+		t.Errorf("an empty dataset list marshals to %s, want []", encoded)
+	}
+
+	sessions, err := store.ListSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if encoded, err := json.Marshal(sessions); err != nil {
+		t.Fatal(err)
+	} else if string(encoded) != "[]" {
+		t.Errorf("an empty session list marshals to %s, want []", encoded)
+	}
+}
+
+// The engines disagree on units for the same analysis — MDTraj reports nm,
+// MDAnalysis angstrom — and only the CSV carried that, so a manifest could hold
+// two analyses of one type whose values were 10x apart with nothing saying so.
+func TestAnalysisRecordsBackendAndUnit(t *testing.T) {
+	analysis := mdsrv.Analysis{ID: "rg", Type: "rgyr", Backend: "MDAnalysis", Unit: "angstrom"}
+	encoded, err := json.Marshal(analysis)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"backend":"MDAnalysis"`, `"unit":"angstrom"`} {
+		if !strings.Contains(string(encoded), want) {
+			t.Errorf("analysis record missing %s: %s", want, encoded)
+		}
+	}
+	// Both stay omitted when unset, so pre-existing manifests are unchanged.
+	bare, err := json.Marshal(mdsrv.Analysis{ID: "x", Type: "rmsd"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(bare), "backend") || strings.Contains(string(bare), "unit") {
+		t.Errorf("unset fields should be omitted: %s", bare)
+	}
+}
+
 // Finding #9: publishing a store that does not exist reported success with
 // files:null and left an empty output directory behind.
 func TestPublishRejectsMissingStore(t *testing.T) {

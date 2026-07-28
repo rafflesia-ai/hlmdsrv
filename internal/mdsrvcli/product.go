@@ -428,7 +428,13 @@ func (a app) selectionCommand() *cobra.Command {
 				return err
 			}
 			if flags.jsonReport {
-				return writeJSON(a.stdout, m.Selections)
+				// A dataset with no selections has a nil slice, which marshals to null;
+				// emit [] so the shape does not change with the contents.
+				selections := m.Selections
+				if selections == nil {
+					selections = []mdsrv.Selection{}
+				}
+				return writeJSON(a.stdout, selections)
 			}
 			for _, selection := range m.Selections {
 				fmt.Fprintf(a.stdout, "%s\t%s\t%s\n", selection.ID, selection.Kind, selection.Expression)

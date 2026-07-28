@@ -126,6 +126,11 @@ type Analysis struct {
 	// without this field a stored trace cannot be attributed and two runs are
 	// silently incomparable.
 	Backend string `json:"backend,omitempty" yaml:"backend,omitempty"`
+	// Unit records the trace's unit of measure, because the engines do not agree
+	// on one: MDTraj reports nm and MDAnalysis reports angstrom for the same
+	// analysis. Only the CSV carried the unit, so a consumer reading the manifest
+	// saw two analyses of one type with no indication they were 10x apart.
+	Unit string `json:"unit,omitempty" yaml:"unit,omitempty"`
 }
 
 type Visualization struct {

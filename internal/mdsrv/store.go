@@ -805,7 +805,11 @@ func (s Store) ListDatasets() ([]DatasetSummary, error) {
 		return nil, err
 	}
 	sort.Strings(matches)
-	var summaries []DatasetSummary
+	// Pre-allocated so an empty store marshals to [] rather than null. A nil slice
+	// becomes JSON null, which forces every consumer to null-check a field that is
+	// an array everywhere else — and ListSessions already got this right, so the
+	// two list endpoints disagreed about the shape of "nothing".
+	summaries := make([]DatasetSummary, 0, len(matches))
 	for _, path := range matches {
 		if isHiddenSidecar(path) {
 			continue
