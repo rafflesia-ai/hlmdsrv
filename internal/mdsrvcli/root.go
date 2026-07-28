@@ -41,9 +41,31 @@ func Execute(ctx context.Context, args []string) error {
 	return app{stdout: os.Stdout, stderr: os.Stderr}.execute(ctx, args)
 }
 
+// countingWriter records whether anything reached stdout. Some commands write
+// their --json report and *then* return an error (compat check, publish static
+// --verify): appending an error envelope after that report puts two JSON
+// documents on stdout, which no consumer can parse. Those reports already carry
+// their own "ok": false, so when the command has spoken we leave stdout alone and
+// send the error to stderr instead.
+type countingWriter struct {
+	w       io.Writer
+	written bool
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	if len(p) > 0 {
+		c.written = true
+	}
+	return c.w.Write(p)
+}
+
 // execute carries the whole of Execute's behavior with injectable writers so the
 // error-envelope and exit-code contract can be tested without spawning a process.
 func (a app) execute(ctx context.Context, args []string) error {
+	// Wrap stdout so a command that already emitted its own report does not get an
+	// error envelope appended to it.
+	tracked := &countingWriter{w: a.stdout}
+	a.stdout = tracked
 	root, cleanup, deadlineExceeded := a.rootCommandWithDeadline()
 	// cleanup cancels any pending --timeout context; run it on every exit path
 	// because cobra skips PersistentPostRun when a command returns an error.
@@ -128,6 +150,13 @@ func (a app) execute(ctx context.Context, args []string) error {
 }
 
 func (a app) writeErrorEnvelope(command string, coded *CLIError) {
+	// Never append to a report the command already wrote: two JSON documents on
+	// stdout is worse than none, because it fails the consumer's parse outright.
+	// Those reports carry their own "ok": false, so the outcome is not lost.
+	if tracked, ok := a.stdout.(*countingWriter); ok && tracked.written {
+		fmt.Fprintf(a.stderr, "%s: %s\n", coded.Code, coded.Error())
+		return
+	}
 	exitCode := ExitCode(coded)
 	if exitCode == 0 {
 		exitCode = 1

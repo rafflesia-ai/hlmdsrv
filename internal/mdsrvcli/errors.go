@@ -141,7 +141,7 @@ func classifyErrorCode(err error) errorCode {
 	// pointed somewhere unusable. These are fixable at the call site, so they must
 	// not fall through to internal_error, which the error table reserves for
 	// "unclassified, report it".
-	case strings.Contains(message, "is not a directory"),
+	case strings.Contains(message, "not a directory"),
 		strings.Contains(message, "is a directory"),
 		strings.Contains(message, "is not a regular file"),
 		// Explicit flag-range validation ("--frames must be at least 2",
@@ -166,7 +166,15 @@ func classifyErrorCode(err error) errorCode {
 		strings.Contains(message, "path escapes"):
 		return codeUnsafePath
 	case strings.Contains(message, "validation failed"),
-		strings.Contains(message, "verification failed"):
+		strings.Contains(message, "verification failed"),
+		// A check that ran and did not pass (compat check) is a validation outcome,
+		// not an unclassified fault.
+		strings.Contains(message, "check failed"),
+		// A resource limit doing its job. runtime.max_atoms/max_frames/max_chunk_bytes
+		// exist to bound a job for CI or untrusted input, so tripping one is the
+		// policy working, not an unclassified fault — it was landing in
+		// internal_error, which tells the caller to report a bug.
+		strings.Contains(message, "exceeding max_"):
 		return codeValidationFailed
 	case strings.Contains(message, "already exists"),
 		strings.Contains(message, "pass --force"):

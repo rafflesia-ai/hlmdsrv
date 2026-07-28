@@ -96,6 +96,28 @@ A pass over surfaces the first two rounds never touched.
 - **More `internal_error` misclassification**: `publish static --out <regular
   file>`, `pack --out <dir>`, and malformed or empty batch JSONL all exited 1.
 
+### Fixed — fifth pass (codec, limits, envelope hole)
+
+- **The error envelope could produce two JSON documents.** Commands that write
+  their `--json` report and *then* fail (`compat check`, `publish static
+  --verify`) had an envelope appended to the report, so stdout carried two
+  concatenated documents and failed a consumer's parse outright — worse than the
+  original bug of emitting nothing. stdout is now tracked; when a command has
+  already reported, the failure goes to stderr and the report (which carries its
+  own `"ok": false`) stands alone.
+- **A non-positive `--chunk-size` was silently coerced** to "everything in one
+  chunk", so a caller asking for specific chunking got something else with no
+  signal. Now `invalid_input`.
+- **Tripped resource limits reported `internal_error`.** `max_atoms`,
+  `max_frames` and `max_chunk_bytes` exist to bound a job, so exceeding one is
+  the policy working — now `validation_failed`. Likewise `compat check` failing
+  its checks, and `install local --bin-dir <regular file>`.
+
+Verified against ground truth in this pass: all six frames of a demo trajectory
+decode to coordinates matching raw `gmx trjconv` exactly, through both the JSON
+and the zstd chunk encodings; chunk sizes of 1, 2, 4, 6 and 100 over six frames
+all produce correct chunk counts and correct frame data.
+
 ### Fixed — fourth pass (orchestration, jobs, lifecycle)
 
 - **The job queue's backpressure response had no typed code.** Every other server

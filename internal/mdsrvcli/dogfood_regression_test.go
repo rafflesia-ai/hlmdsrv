@@ -516,6 +516,77 @@ func TestClassifierCoversFlagAndNetworkFailures(t *testing.T) {
 	}
 }
 
+// Fifth pass — a hole in the error-envelope fix itself. Some commands write
+// their --json report and *then* return an error (compat check, publish static
+// --verify). Appending an envelope after that report put TWO JSON documents on
+// stdout, which fails a consumer's parse outright — worse than emitting nothing.
+func TestFailureAfterAReportDoesNotAppendASecondDocument(t *testing.T) {
+	// A regular file as --store fails deterministically. A merely-absent path does
+	// not: compat check would simply create the store there.
+	store := filepath.Join(t.TempDir(), "afile")
+	if err := os.WriteFile(store, []byte("not a store"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result := execCLI("compat", "check", "--store", store, "--json")
+	if result.err == nil {
+		t.Fatal("compat check against a store that is a regular file should fail")
+	}
+	// decodeEnvelope rejects a second document; here the single document is the
+	// command's own report, which carries its own ok:false.
+	var payload map[string]any
+	decoder := json.NewDecoder(strings.NewReader(result.stdout))
+	if err := decoder.Decode(&payload); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\n%s", err, result.stdout)
+	}
+	if decoder.More() {
+		t.Fatalf("stdout carries more than one JSON document:\n%s", result.stdout)
+	}
+	if ok, present := payload["ok"].(bool); !present || ok {
+		t.Errorf("the report should carry ok:false, got %v", payload["ok"])
+	}
+	// The error still has to reach the operator, just not on stdout.
+	if strings.TrimSpace(result.stderr) == "" {
+		t.Error("the failure should be reported on stderr when stdout is already used")
+	}
+}
+
+// A non-positive --chunk-size was silently coerced to "everything in one chunk",
+// so a caller who asked for specific chunking got something else with no signal.
+func TestRequirePositiveChunkSize(t *testing.T) {
+	for _, size := range []int{0, -1, -128} {
+		err := requirePositiveChunkSize(size)
+		if err == nil {
+			t.Errorf("--chunk-size %d must be rejected", size)
+			continue
+		}
+		if ErrorCode(err) != string(codeInvalidInput) {
+			t.Errorf("--chunk-size %d: code = %q, want %q", size, ErrorCode(err), codeInvalidInput)
+		}
+	}
+	for _, size := range []int{1, 2, 128} {
+		if err := requirePositiveChunkSize(size); err != nil {
+			t.Errorf("--chunk-size %d must be accepted: %v", size, err)
+		}
+	}
+}
+
+// A tripped resource limit is the policy working as configured, not an
+// unclassified fault; a check that ran and did not pass is likewise a validation
+// outcome. Both were landing in internal_error.
+func TestClassifierCoversLimitsAndChecks(t *testing.T) {
+	for message, want := range map[string]errorCode{
+		"trajectory has 6 frames, exceeding max_frames=1":              codeValidationFailed,
+		"trajectory has 3 atoms, exceeding max_atoms=1":                codeValidationFailed,
+		"chunk-000000.json is 1253 bytes, exceeding max_chunk_bytes=1": codeValidationFailed,
+		"compatibility check failed":                                   codeValidationFailed,
+		"lstat /tmp/afile: not a directory":                            codeInvalidInput,
+	} {
+		if got := classifyErrorCode(errors.New(message)); got != want {
+			t.Errorf("classify(%q) = %q, want %q", message, got, want)
+		}
+	}
+}
+
 // Finding #9: publishing a store that does not exist reported success with
 // files:null and left an empty output directory behind.
 func TestPublishRejectsMissingStore(t *testing.T) {

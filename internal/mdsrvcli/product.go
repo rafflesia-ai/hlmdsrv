@@ -546,6 +546,9 @@ func (a app) indexCommand() *cobra.Command {
 		Short: "Build a JSON frame/chunk index",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requirePositiveChunkSize(flags.chunkSize); err != nil {
+				return err
+			}
 			store, err := mdsrv.OpenStore(flags.store)
 			if err != nil {
 				return err
@@ -598,6 +601,9 @@ func (a app) indexCommand() *cobra.Command {
 		Short: "Materialize static frame chunks",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requirePositiveChunkSize(flags.chunkSize); err != nil {
+				return err
+			}
 			store, err := mdsrv.OpenStore(flags.store)
 			if err != nil {
 				return err
@@ -1938,4 +1944,16 @@ func openAPISchema() map[string]any {
 			},
 		},
 	}
+}
+
+// requirePositiveChunkSize rejects a non-positive --chunk-size instead of letting
+// it be silently coerced. A 0 or negative value used to be quietly replaced by
+// "everything in one chunk", so a caller who asked for a specific chunking got
+// something else and no indication of it -- the same shape as a numeric flag
+// being dropped on the floor.
+func requirePositiveChunkSize(size int) error {
+	if size <= 0 {
+		return codedErrorf(codeInvalidInput, "--chunk-size must be at least 1, got %d", size)
+	}
+	return nil
 }
