@@ -279,6 +279,12 @@ func (a app) packCommand() *cobra.Command {
 			if info, statErr := os.Stat(out); statErr == nil && info.IsDir() {
 				return codedErrorf(codeInvalidInput, "%s is a directory, not a file; --out must name a .mdsrvx file", out)
 			}
+			// pack stages "<out>.tmp" and renames, so it cannot discard to the null
+			// device the way the pure-Go writers can: it would fail on
+			// /dev/null.tmp with EPERM, which reads as an unclassified fault.
+			if isNullDevice(out) {
+				return codedErrorf(codeInvalidInput, "%s cannot be a pack target; the archive is staged alongside it and renamed into place", out)
+			}
 			packManifest, err := store.LoadDataset(args[0])
 			if err != nil {
 				return err

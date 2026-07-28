@@ -380,11 +380,27 @@ func rejectDatasetInputOverwrite(store mdsrv.Store, m mdsrv.Manifest, out string
 // for read until a writer does — and that block is invisible to context
 // cancellation, so such a path has to be refused rather than merely interrupted.
 func rejectNonRegularPath(path, verb string) error {
+	if isNullDevice(path) {
+		// "run it but throw the output away" is an established idiom, and the null
+		// device is the one special file that neither blocks on open nor can be
+		// meaningfully destroyed by writing to it — the two hazards this guard
+		// exists for.
+		return nil
+	}
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() || info.Mode().IsRegular() {
 		return nil
 	}
 	return codedErrorf(codeInvalidInput, "%s is not a regular file; refusing to %s it", path, verb)
+}
+
+func isNullDevice(path string) bool {
+	switch strings.ToUpper(strings.TrimSpace(path)) {
+	case "/DEV/NULL", "NUL":
+		return true
+	default:
+		return false
+	}
 }
 
 // ensureOutputPathAgainst prepares an output path, refusing two destructive
@@ -401,6 +417,12 @@ func rejectNonRegularPath(path, verb string) error {
 // Identity is tested with os.SameFile (device+inode), so a hardlink or a symlink
 // aliasing the input is caught too, not just a literal path match.
 func ensureOutputPathAgainst(path string, force bool, inputs ...string) error {
+	// The null device is deliberately NOT exempted here. Every caller of this
+	// helper either stages a temp file and renames (pack tries /dev/null.tmp and
+	// gets EPERM) or hands the path to GROMACS (which derives the format from the
+	// extension and fails). Allowing it only moved a clean invalid_input into an
+	// unclassified failure deeper in. Sinks that can genuinely discard — the
+	// pure-Go writers — go through rejectNonRegularPath, which does exempt it.
 	info, err := os.Stat(path)
 	switch {
 	case err == nil && info.IsDir():

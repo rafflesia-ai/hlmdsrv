@@ -96,6 +96,26 @@ A pass over surfaces the first two rounds never touched.
 - **More `internal_error` misclassification**: `publish static --out <regular
   file>`, `pack --out <dir>`, and malformed or empty batch JSONL all exited 1.
 
+### Fixed — twelfth pass (audit of the preceding fixes)
+
+- **The classifier could mask a real bug as the caller's mistake.** Error codes
+  are decided by substring match, and `out of range` — added for atom-index
+  selections — also appears in Go's panic text, so `runtime error: index out of
+  range` would have been reported as `invalid_input`, telling the caller to fix
+  their own call. `internal_error` exists precisely for that case, so masking it
+  is the worst direction to get wrong. Any message containing `runtime error:` or
+  `nil pointer dereference` is now classified `internal_error` before anything
+  else runs, and the selection patterns are anchored on their own wording
+  (`atom index … out of range`, `cannot convert atom-index selection`) rather
+  than bare fragments.
+- **`--out /dev/null` was refused everywhere.** "Do the work, discard the result"
+  is a normal idiom, and the null device neither blocks on open nor can be
+  destroyed by writing to it — the two hazards that guard exists for. The pure-Go
+  writers (`frames get`, `bench`, config) now accept it. The staged-and-renamed
+  and GROMACS-backed sinks (`pack`, `export`) still refuse it, because they
+  genuinely cannot use it — `pack` would fail on `/dev/null.tmp` with EPERM — and
+  a clean `invalid_input` is better than an unclassified failure deeper in.
+
 ### Fixed — eleventh pass (regression from the tenth)
 
 - **The stricter id rules locked users out of existing stores.**

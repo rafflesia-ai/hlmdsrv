@@ -116,6 +116,14 @@ func classifyErrorCode(err error) errorCode {
 		return codeMissingInput
 	}
 	message := strings.ToLower(err.Error())
+	// A Go runtime panic is definitionally our bug, never the caller's. This is
+	// checked first because the patterns below match on substrings, and some of
+	// them ("out of range") also appear in panic text: without this guard a real
+	// defect would be reported as invalid_input, telling the caller to fix their
+	// own call. internal_error exists precisely for this case.
+	if strings.Contains(message, "runtime error:") || strings.Contains(message, "nil pointer dereference") {
+		return codeInternalError
+	}
 	switch {
 	case strings.Contains(message, "schema validation failed"),
 		strings.Contains(message, "decode yaml"),
@@ -166,12 +174,15 @@ func classifyErrorCode(err error) errorCode {
 		strings.Contains(message, "cannot be negative"),
 		// A file handed to `unpack` that is not a zip.
 		strings.Contains(message, "is not a valid"),
-		// Selection expressions and dialects the caller can correct.
-		strings.Contains(message, "out of range"),
+		// Selection expressions and dialects the caller can correct. These are
+		// deliberately anchored on our own wording rather than on bare fragments
+		// like "out of range" or "cannot convert", which also occur in Go runtime
+		// and reflection errors.
+		strings.Contains(message, "atom index") && strings.Contains(message, "out of range"),
 		strings.Contains(message, "invalid atom index selection"),
 		strings.Contains(message, "invalid descending range"),
 		strings.Contains(message, "unknown selection kind"),
-		strings.Contains(message, "cannot convert"),
+		strings.Contains(message, "cannot convert atom-index selection"),
 		// A malformed dataset/selection id. Flagged in the first dogfood round and
 		// missed by every fix since: the message matched no pattern, so a bad id
 		// exited 1 and told the caller to report a bug about their own typo.

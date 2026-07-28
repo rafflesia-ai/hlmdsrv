@@ -762,3 +762,50 @@ func TestPublishRejectsMissingStore(t *testing.T) {
 		t.Error("an output directory was created for a store that does not exist")
 	}
 }
+
+// Twelfth pass — auditing my own fixes rather than the original code. The
+// classifier matches on substrings, and "out of range" (added for atom-index
+// selections) also appears in Go's panic text, so a genuine defect would have
+// been reported as the caller's invalid_input. internal_error exists for exactly
+// this case; masking it is the worst possible misclassification.
+func TestClassifierNeverMasksARuntimePanic(t *testing.T) {
+	for _, message := range []string{
+		"runtime error: index out of range [5] with length 3",
+		"runtime error: slice bounds out of range [:9] with capacity 4",
+		"runtime error: invalid memory address or nil pointer dereference",
+		"runtime error: integer divide by zero",
+	} {
+		if got := classifyErrorCode(errors.New(message)); got != codeInternalError {
+			t.Errorf("a runtime panic must stay internal_error, got %q for: %s", got, message)
+		}
+	}
+	// The real selection error, which the narrowed pattern still catches.
+	if got := classifyErrorCode(errors.New("atom index 4 out of range 1..3")); got != codeInvalidInput {
+		t.Errorf("a genuine selection error should be invalid_input, got %q", got)
+	}
+}
+
+// The null device is a legitimate discard sink for the pure-Go writers, but not
+// for the rename-based or GROMACS-backed ones, which cannot write to it at all —
+// allowing it there merely moved a clean refusal into a deeper unclassified
+// failure (/dev/null.tmp: operation not permitted).
+func TestNullDeviceIsAcceptedOnlyWhereItWorks(t *testing.T) {
+	if !isNullDevice("/dev/null") || !isNullDevice("NUL") || !isNullDevice(" /dev/null ") {
+		t.Error("the null device should be recognised, including the Windows spelling")
+	}
+	if isNullDevice("/dev/nullish") || isNullDevice("null.txt") || isNullDevice("") {
+		t.Error("only the null device itself should match")
+	}
+	// Pure-Go sink: accepted.
+	if err := rejectNonRegularPath("/dev/null", "write to"); err != nil {
+		t.Errorf("a pure-Go writer should accept the null device: %v", err)
+	}
+	// Staged/renamed or tool-written sink: refused, and refused cleanly.
+	err := ensureOutputPathAgainst("/dev/null", true)
+	if err == nil {
+		t.Fatal("a staged/renamed output must refuse the null device")
+	}
+	if ErrorCode(err) != string(codeInvalidInput) {
+		t.Errorf("refusal should be invalid_input, got %q", ErrorCode(err))
+	}
+}
