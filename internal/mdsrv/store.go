@@ -593,7 +593,8 @@ func (s Store) PublishSession(opts SessionOptions) (SessionRef, error) {
 	if err := ValidateID(opts.ID); err != nil {
 		return SessionRef{}, fmt.Errorf("id: %w", err)
 	}
-	if err := ValidateID(opts.DatasetID); err != nil {
+	// The dataset already exists; only the new session id faces the strict rules.
+	if err := ValidateStoredID(opts.DatasetID); err != nil {
 		return SessionRef{}, fmt.Errorf("dataset id: %w", err)
 	}
 	if strings.TrimSpace(opts.File) == "" {
@@ -646,7 +647,8 @@ func (s Store) ManifestPath(id string) string {
 }
 
 func (s Store) LoadDataset(id string) (Manifest, error) {
-	if err := ValidateID(id); err != nil {
+	// Read path: see ValidateStoredID.
+	if err := ValidateStoredID(id); err != nil {
 		return Manifest{}, fmt.Errorf("id: %w", err)
 	}
 	m, err := LoadManifestFile(s.ManifestPath(id))

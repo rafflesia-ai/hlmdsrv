@@ -24,7 +24,9 @@ type UnpackReport struct {
 }
 
 func (s Store) PackDataset(id, out string, force bool) (PackReport, error) {
-	if err := ValidateID(id); err != nil {
+	// Read path: packing an existing dataset must work even if its id predates the
+	// stricter creation rules.
+	if err := ValidateStoredID(id); err != nil {
 		return PackReport{}, fmt.Errorf("id: %w", err)
 	}
 	if strings.TrimSpace(out) == "" {
@@ -116,7 +118,10 @@ func (s Store) UnpackArchive(path string, force bool) (UnpackReport, error) {
 				// The id becomes a filesystem path via ManifestPath; validate it
 				// so a crafted archive cannot write its manifest outside the
 				// store with an id like "../../etc/cron.d/evil".
-				if err := ValidateID(index.Metadata.ID); err != nil {
+				// ValidateStoredID still enforces the path-component pattern, which is
+				// what blocks the traversal; the extra creation-time portability rules
+				// would needlessly refuse to restore a legacy archive.
+				if err := ValidateStoredID(index.Metadata.ID); err != nil {
 					return UnpackReport{}, fmt.Errorf("archive manifest id %q is invalid: %w", index.Metadata.ID, err)
 				}
 				report.ID = index.Metadata.ID

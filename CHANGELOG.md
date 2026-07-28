@@ -96,6 +96,25 @@ A pass over surfaces the first two rounds never touched.
 - **More `internal_error` misclassification**: `publish static --out <regular
   file>`, `pack --out <dir>`, and malformed or empty batch JSONL all exited 1.
 
+### Fixed — eleventh pass (regression from the tenth)
+
+- **The stricter id rules locked users out of existing stores.**
+  `Manifest.Validate` runs on every load, so tightening `ValidateID` for Windows
+  portability silently became a *read* rule: a store written by an earlier
+  version holding a dataset named `CON` became unreadable, and since
+  `ListDatasets` loads every manifest, one such dataset took the **whole store's
+  listing** down with it — the same failure shape as the AppleDouble bug fixed in
+  the first round. Read paths (`LoadDataset`, `Manifest.Validate`, `PackDataset`,
+  unpack, session dataset refs) now use `ValidateStoredID`, which checks only
+  that the id is a usable path component. Creation paths (`Ingest`, rename,
+  session and selection ids) keep the strict rule. New restrictions gate writes;
+  they do not revoke access to data that already exists.
+
+The unpack traversal guard is unaffected — `ValidateStoredID` still enforces the
+path-component pattern, which is what blocks `../../etc/...`. Verified in the
+Linux container: creating `CON` is refused, reading a legacy `CON` works, and the
+wrong-case lookup from the ninth pass still fails there as it does on macOS.
+
 ### Fixed — tenth pass (id validation)
 
 - **Dataset ids that cannot be filenames on Windows were accepted.** Ids become

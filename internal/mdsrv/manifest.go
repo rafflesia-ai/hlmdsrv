@@ -201,7 +201,9 @@ func (m Manifest) Validate() error {
 	if m.Version != ManifestVersion {
 		return fmt.Errorf("unsupported manifest version %q", m.Version)
 	}
-	if err := ValidateID(m.Metadata.ID); err != nil {
+	// Read path: a manifest already on disk must stay loadable, so this uses the
+	// structural check only. Creation sites call ValidateID for the stricter rules.
+	if err := ValidateStoredID(m.Metadata.ID); err != nil {
 		return fmt.Errorf("metadata.id: %w", err)
 	}
 	if err := m.Inputs.Topology.Validate("inputs.topology"); err != nil {
@@ -281,12 +283,31 @@ var windowsReservedNames = map[string]bool{
 	"lpt6": true, "lpt7": true, "lpt8": true, "lpt9": true,
 }
 
-func ValidateID(id string) error {
+// ValidateStoredID is the rule applied when READING an id that is already in a
+// store. It checks only that the id is structurally usable as a path component.
+//
+// It deliberately omits the Windows-portability restrictions that ValidateID
+// adds. Those tightened what may be CREATED; applying them on read would make
+// data that a previous version accepted permanently unreadable — and because
+// ListDatasets loads every manifest, a single such dataset would take the whole
+// store's listing down with it. New restrictions must gate writes, not lock users
+// out of what they already have.
+func ValidateStoredID(id string) error {
 	if strings.TrimSpace(id) == "" {
 		return errors.New("is required")
 	}
 	if !idPattern.MatchString(id) {
 		return errors.New("invalid id: must start with an alphanumeric character and contain only letters, digits, dot, underscore, or dash")
+	}
+	return nil
+}
+
+// ValidateID is the stricter rule applied when CREATING an id: everything
+// ValidateStoredID requires, plus the portability limits that keep a new store
+// readable on Windows.
+func ValidateID(id string) error {
+	if err := ValidateStoredID(id); err != nil {
+		return err
 	}
 	// Portability, same class as the case-sensitivity check in LoadDataset: a store
 	// should be readable wherever it is taken. Windows strips a trailing dot from a

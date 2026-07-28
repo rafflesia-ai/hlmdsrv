@@ -130,6 +130,42 @@ func TestValidateIDFailuresAreRecognisable(t *testing.T) {
 	}
 }
 
+// Eleventh pass — a regression the previous round introduced. Manifest.Validate
+// runs on every load, so tightening ValidateID for Windows portability silently
+// became a READ rule: a store written by an earlier version holding a dataset
+// named CON became unreadable, and because ListDatasets loads every manifest, one
+// such dataset took the whole store's listing down. New restrictions must gate
+// writes, never lock users out of data they already have.
+func TestExistingStoresWithLegacyIDsStayReadable(t *testing.T) {
+	store := newStoreWithDataset(t)
+
+	// A manifest an earlier version would have accepted.
+	legacy, err := os.ReadFile(store.ManifestPath("demo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy = []byte(strings.ReplaceAll(string(legacy), "id: demo", "id: CON"))
+	if err := os.WriteFile(filepath.Join(store.Root, DatasetsDir, "CON.yaml"), legacy, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	summaries, err := store.ListDatasets()
+	if err != nil {
+		t.Fatalf("one legacy id must not break the whole listing: %v", err)
+	}
+	if len(summaries) != 2 {
+		t.Errorf("got %d datasets, want both the legacy and the current one", len(summaries))
+	}
+	if _, err := store.LoadDataset("CON"); err != nil {
+		t.Errorf("a legacy dataset must stay loadable: %v", err)
+	}
+
+	// Creating a new one is still refused.
+	if err := ValidateID("CON"); err == nil {
+		t.Error("creating a new CON dataset must still be refused")
+	}
+}
+
 func TestIsHiddenSidecar(t *testing.T) {
 	for path, want := range map[string]bool{
 		"/store/datasets/._demo.yaml": true,
