@@ -996,15 +996,18 @@ func (a app) runExport(ctx context.Context, datasetID string, flags *exportFlags
 		ext := firstNonEmpty(flags.format, "xtc")
 		flags.out = datasetID + "-export." + strings.TrimPrefix(ext, ".")
 	}
-	if err := ensureOutputPath(flags.out, flags.force); err != nil {
-		return err
-	}
+	// Resolve the inputs before preparing the output so the output path can be
+	// checked against them: `export --out <the store's own topology> --force`
+	// otherwise truncated the source file and reported success.
 	topologyPath, err := store.SafeResolvePath(m.Inputs.Topology.Path)
 	if err != nil {
 		return err
 	}
 	trajectoryPath, err := store.SafeResolvePath(m.Inputs.Trajectories[0].Path)
 	if err != nil {
+		return err
+	}
+	if err := ensureOutputPathAgainst(flags.out, flags.force, topologyPath, trajectoryPath); err != nil {
 		return err
 	}
 	start, stop, stride, err := parseFrameRange(flags.frames, m.Inputs.Trajectories[0])

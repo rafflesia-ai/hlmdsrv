@@ -11,7 +11,13 @@ import (
 type errorCode string
 
 const (
-	codeInternalError    errorCode = "internal_error"
+	codeInternalError errorCode = "internal_error"
+	// codeInvalidInput covers caller-fixable bad invocation: an unknown flag or
+	// subcommand, a bad flag value, or an input path that is missing, a directory,
+	// or otherwise unusable. It shares exit 2 with codeInvalidManifest (both mean
+	// "fix the call, do not retry") but keeps codeInvalidManifest meaning what the
+	// error table says it means: the manifest itself failed to parse or validate.
+	codeInvalidInput     errorCode = "invalid_input"
 	codeInvalidManifest  errorCode = "invalid_manifest"
 	codeMissingInput     errorCode = "missing_input"
 	codeMissingBackend   errorCode = "missing_backend"
@@ -76,7 +82,7 @@ func ExitCode(err error) int {
 		return 0
 	}
 	switch coded.Code {
-	case codeInvalidManifest:
+	case codeInvalidInput, codeInvalidManifest:
 		return 2
 	case codeMissingInput:
 		return 3

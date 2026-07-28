@@ -711,18 +711,51 @@ func (a app) validateCommand() *cobra.Command {
 					return err
 				}
 				report := store.Doctor()
+				// Doctor only inspects store layout, version and metadata. Under
+				// --strict also verify each dataset's files, otherwise a store whose
+				// dataset fails its own checksum check reported ok:true here while
+				// `validate <id>` on the very same store failed — a clean bill of health
+				// for a corrupt store.
+				datasetFailures := []string{}
+				if flags.strict {
+					summaries, listErr := store.ListDatasets()
+					if listErr != nil {
+						return listErr
+					}
+					for _, summary := range summaries {
+						m, loadErr := store.LoadDataset(summary.ID)
+						if loadErr != nil {
+							datasetFailures = append(datasetFailures, fmt.Sprintf("%s: %v", summary.ID, loadErr))
+							continue
+						}
+						datasetReport, buildErr := buildDatasetValidationReport(cmd.Context(), store, m, store.Root, flags)
+						if buildErr != nil {
+							datasetFailures = append(datasetFailures, fmt.Sprintf("%s: %v", summary.ID, buildErr))
+							continue
+						}
+						if !datasetReport.OK {
+							datasetFailures = append(datasetFailures, summary.ID)
+						}
+					}
+					if len(datasetFailures) > 0 {
+						report.OK = false
+					}
+				}
 				if flags.jsonReport {
 					if err := writeJSON(a.stdout, report); err != nil {
 						return err
 					}
 					if flags.strict && !report.OK {
-						return codedErrorf(codeValidationFailed, "store validation failed")
+						return storeValidationError(datasetFailures)
 					}
 					return nil
 				}
 				writeStoreDoctorText(a.stdout, report)
+				for _, failure := range datasetFailures {
+					fmt.Fprintln(a.stderr, "dataset validation failed:", failure)
+				}
 				if flags.strict && !report.OK {
-					return codedErrorf(codeValidationFailed, "store validation failed")
+					return storeValidationError(datasetFailures)
 				}
 				return nil
 			} else {
@@ -2098,6 +2131,15 @@ func subtleConstantTimeEqual(a, b string) bool {
 		result |= a[i] ^ b[i]
 	}
 	return result == 0
+}
+
+// storeValidationError names the datasets that failed so the message points at
+// what to fix rather than just saying the store is bad.
+func storeValidationError(datasetFailures []string) error {
+	if len(datasetFailures) == 0 {
+		return codedErrorf(codeValidationFailed, "store validation failed")
+	}
+	return codedErrorf(codeValidationFailed, "store validation failed: %s", strings.Join(datasetFailures, ", "))
 }
 
 func writeJSON(w io.Writer, value any) error {

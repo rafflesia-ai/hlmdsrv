@@ -1,0 +1,308 @@
+package mdsrvcli
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"syscall"
+	"testing"
+)
+
+// Regression tests for the defects found by dogfooding the carved-out CLI. Each
+// asserts the fixed behavior and would fail against the pre-fix code.
+
+type executeResult struct {
+	stdout string
+	stderr string
+	err    error
+}
+
+func execCLI(args ...string) executeResult {
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.execute(context.Background(), args)
+	return executeResult{stdout: stdout.String(), stderr: stderr.String(), err: err}
+}
+
+func decodeEnvelope(t *testing.T, payload string) errorEnvelope {
+	t.Helper()
+	var envelope errorEnvelope
+	decoder := json.NewDecoder(strings.NewReader(payload))
+	if err := decoder.Decode(&envelope); err != nil {
+		t.Fatalf("stdout is not a JSON error envelope: %v\npayload:\n%s", err, payload)
+	}
+	// stdout must carry exactly one document: appending an envelope to a report a
+	// command already wrote produced concatenated JSON that no consumer can parse.
+	if decoder.More() {
+		t.Fatalf("stdout carries more than one JSON document:\n%s", payload)
+	}
+	return envelope
+}
+
+// Finding #1: --json wrote nothing at all to stdout on every failure path, so an
+// agent told to branch on error.code got an empty stream.
+func TestJSONErrorEnvelopeIsWrittenToStdout(t *testing.T) {
+	store := filepath.Join(t.TempDir(), "missing-store")
+	result := execCLI("frames", "count", "nope", "--store", store, "--json")
+	if result.err == nil {
+		t.Fatal("expected an error for a dataset that does not exist")
+	}
+	if strings.TrimSpace(result.stdout) == "" {
+		t.Fatal("no JSON envelope on stdout; --json must emit a machine-readable failure")
+	}
+	envelope := decodeEnvelope(t, result.stdout)
+	if envelope.OK {
+		t.Errorf("envelope ok = true, want false")
+	}
+	if envelope.Error.Code != string(codeMissingInput) {
+		t.Errorf("code = %q, want %q", envelope.Error.Code, codeMissingInput)
+	}
+	if envelope.Error.ExitCode != 3 {
+		t.Errorf("exit_code = %d, want 3", envelope.Error.ExitCode)
+	}
+	if envelope.Command != "frames count" {
+		t.Errorf("command = %q, want %q", envelope.Command, "frames count")
+	}
+	if envelope.Timestamp == "" {
+		t.Error("timestamp is empty")
+	}
+}
+
+// Without --json the failure stays on stderr and stdout stays clean, so shell
+// pipelines are unaffected by the envelope.
+func TestPlainErrorStillGoesToStderr(t *testing.T) {
+	store := filepath.Join(t.TempDir(), "missing-store")
+	result := execCLI("frames", "count", "nope", "--store", store)
+	if result.err == nil {
+		t.Fatal("expected an error")
+	}
+	if strings.TrimSpace(result.stdout) != "" {
+		t.Errorf("stdout should be empty without --json, got:\n%s", result.stdout)
+	}
+	if !strings.Contains(result.stderr, string(codeMissingInput)) {
+		t.Errorf("stderr should name the code, got:\n%s", result.stderr)
+	}
+}
+
+// wantsJSON honors pflag's last-wins semantics so the error path cannot desync
+// from the success path on a contradictory invocation.
+func TestWantsJSONLastWins(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"version"}, false},
+		{[]string{"version", "--json"}, true},
+		{[]string{"version", "--json=false"}, false},
+		{[]string{"version", "--json", "--json=false"}, false},
+		{[]string{"version", "--json=false", "--json"}, true},
+		{[]string{"version", "--json=0"}, false},
+	} {
+		if got := wantsJSON(tc.args); got != tc.want {
+			t.Errorf("wantsJSON(%v) = %v, want %v", tc.args, got, tc.want)
+		}
+	}
+}
+
+// Finding #8: cobra usage failures fell through to internal_error (exit 1),
+// whose documented meaning is "unclassified, report it" — so a typo'd flag told
+// the caller to file a bug.
+func TestUsageErrorsAreInvalidInput(t *testing.T) {
+	for _, args := range [][]string{
+		{"version", "--definitely-not-a-flag", "--json"},
+		{"frobnicate", "--json"},
+		{"--timeout", "notaduration", "version", "--json"},
+	} {
+		result := execCLI(args...)
+		if result.err == nil {
+			t.Fatalf("hlmdsrv %s: expected an error", strings.Join(args, " "))
+		}
+		if got := ExitCode(result.err); got != 2 {
+			t.Errorf("hlmdsrv %s: exit = %d, want 2", strings.Join(args, " "), got)
+		}
+		envelope := decodeEnvelope(t, result.stdout)
+		if envelope.Error.Code != string(codeInvalidInput) {
+			t.Errorf("hlmdsrv %s: code = %q, want %q", strings.Join(args, " "), envelope.Error.Code, codeInvalidInput)
+		}
+	}
+}
+
+func TestIsUsageError(t *testing.T) {
+	if !isUsageError(errors.New(`unknown flag: --nope`)) {
+		t.Error("unknown flag should be a usage error")
+	}
+	if !isUsageError(errors.New(`accepts 1 arg(s), received 0`)) {
+		t.Error("arg-count failure should be a usage error")
+	}
+	if isUsageError(errors.New("sha256 mismatch")) {
+		t.Error("a runtime failure must not be treated as a usage error")
+	}
+}
+
+// Finding #6: --timeout built a deadline context that the pure-Go commands never
+// consulted, so an exhausted budget produced a full success report at exit 0.
+func TestExhaustedTimeoutFailsBeforeTheCommandRuns(t *testing.T) {
+	store := t.TempDir()
+	if result := execCLI("init", "--store", store, "--json"); result.err != nil {
+		t.Fatalf("init: %v", result.err)
+	}
+	result := execCLI("--timeout", "1ns", "store", "doctor", "--store", store, "--json")
+	if result.err == nil {
+		t.Fatal("an exhausted --timeout must not report success")
+	}
+	if got := ExitCode(result.err); got != 5 {
+		t.Errorf("exit = %d, want 5", got)
+	}
+	envelope := decodeEnvelope(t, result.stdout)
+	if envelope.Error.Code != string(codeBackendTimeout) {
+		t.Errorf("code = %q, want %q", envelope.Error.Code, codeBackendTimeout)
+	}
+}
+
+func TestGenerousTimeoutDoesNotInterfere(t *testing.T) {
+	store := t.TempDir()
+	if result := execCLI("init", "--store", store, "--json"); result.err != nil {
+		t.Fatalf("init: %v", result.err)
+	}
+	if result := execCLI("--timeout", "5m", "store", "doctor", "--store", store, "--json"); result.err != nil {
+		t.Fatalf("a generous timeout must not fail the run: %v\nstderr:\n%s", result.err, result.stderr)
+	}
+}
+
+// Finding #2: `export --out <one of the run's own inputs> --force` truncated the
+// source the instant the output was opened, and reported success.
+func TestEnsureOutputPathRejectsSelfOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	input := filepath.Join(dir, "topology.gro")
+	if err := os.WriteFile(input, []byte("original contents\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := ensureOutputPathAgainst(input, true, input)
+	if err == nil {
+		t.Fatal("writing an output over its own input must be refused")
+	}
+	if ErrorCode(err) != string(codeInvalidInput) {
+		t.Errorf("code = %q, want %q", ErrorCode(err), codeInvalidInput)
+	}
+	data, readErr := os.ReadFile(input)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(data) != "original contents\n" {
+		t.Errorf("input was modified: %q", string(data))
+	}
+}
+
+// A hardlink aliases the same inode, so a literal path comparison would miss it.
+func TestEnsureOutputPathRejectsSelfOverwriteViaHardlink(t *testing.T) {
+	dir := t.TempDir()
+	input := filepath.Join(dir, "topology.gro")
+	alias := filepath.Join(dir, "alias.gro")
+	if err := os.WriteFile(input, []byte("original\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(input, alias); err != nil {
+		t.Skipf("hardlinks unsupported here: %v", err)
+	}
+	if err := ensureOutputPathAgainst(alias, true, input); err == nil {
+		t.Fatal("a hardlink aliasing an input must be refused")
+	}
+}
+
+func TestEnsureOutputPathAllowsAnUnrelatedTarget(t *testing.T) {
+	dir := t.TempDir()
+	input := filepath.Join(dir, "in.gro")
+	if err := os.WriteFile(input, []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureOutputPathAgainst(filepath.Join(dir, "out.xtc"), false, input); err != nil {
+		t.Fatalf("an unrelated output path must be accepted: %v", err)
+	}
+}
+
+// Finding #3: an existing FIFO/device output was unlinked and replaced with a
+// regular file, destroying a pipe another process may have been reading.
+func TestRejectNonRegularOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no FIFOs on windows")
+	}
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "pipe")
+	if err := syscall.Mkfifo(fifo, 0o644); err != nil {
+		t.Skipf("mkfifo unsupported here: %v", err)
+	}
+	err := rejectNonRegularOutput(fifo)
+	if err == nil {
+		t.Fatal("a FIFO output must be refused")
+	}
+	if ErrorCode(err) != string(codeInvalidInput) {
+		t.Errorf("code = %q, want %q", ErrorCode(err), codeInvalidInput)
+	}
+	info, statErr := os.Lstat(fifo)
+	if statErr != nil {
+		t.Fatal(statErr)
+	}
+	if info.Mode()&os.ModeNamedPipe == 0 {
+		t.Error("the FIFO was replaced")
+	}
+	// A regular file and a missing path are both fine.
+	regular := filepath.Join(dir, "out.txt")
+	if err := os.WriteFile(regular, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := rejectNonRegularOutput(regular); err != nil {
+		t.Errorf("a regular file must be accepted: %v", err)
+	}
+	if err := rejectNonRegularOutput(filepath.Join(dir, "absent")); err != nil {
+		t.Errorf("a missing path must be accepted: %v", err)
+	}
+}
+
+// Finding #8: a missing or directory input was handed to gmx, which failed with
+// its own banner and got classified internal_error (exit 1).
+func TestRequireInputFile(t *testing.T) {
+	dir := t.TempDir()
+	regular := filepath.Join(dir, "ok.gro")
+	if err := os.WriteFile(regular, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireInputFile(regular); err != nil {
+		t.Errorf("a readable regular file must be accepted: %v", err)
+	}
+	for name, path := range map[string]string{
+		"missing":   filepath.Join(dir, "absent.gro"),
+		"directory": dir,
+		"empty":     "   ",
+	} {
+		err := requireInputFile(path)
+		if err == nil {
+			t.Errorf("%s input must be rejected", name)
+			continue
+		}
+		if ErrorCode(err) != string(codeInvalidInput) {
+			t.Errorf("%s: code = %q, want %q", name, ErrorCode(err), codeInvalidInput)
+		}
+	}
+}
+
+// Finding #9: publishing a store that does not exist reported success with
+// files:null and left an empty output directory behind.
+func TestPublishRejectsMissingStore(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "static")
+	result := execCLI("publish", "static", "--store", filepath.Join(dir, "nope"), "--out", out, "--json")
+	if result.err == nil {
+		t.Fatal("publishing a nonexistent store must fail")
+	}
+	if got := ExitCode(result.err); got != 3 {
+		t.Errorf("exit = %d, want 3", got)
+	}
+	if _, err := os.Stat(out); err == nil {
+		t.Error("an output directory was created for a store that does not exist")
+	}
+}

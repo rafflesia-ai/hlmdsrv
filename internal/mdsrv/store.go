@@ -765,6 +765,18 @@ func (s Store) frameTimeFromIndex(m Manifest, frameIndex int) (float64, bool, er
 	return 0, false, nil
 }
 
+// isHiddenSidecar reports whether a path is a dotfile rather than a dataset
+// manifest the store wrote. macOS creates AppleDouble "._<name>" siblings for
+// extended attributes on every non-native filesystem (exFAT, FAT, SMB, USB) —
+// exactly where multi-GB trajectory stores tend to live — and those match a
+// "*.yaml" glob while being binary. Treating one as a manifest made a valid store
+// unlistable and unpublishable, blaming a file the user never created. Any
+// leading-dot file is skipped, not just AppleDouble: the store never writes one,
+// so a dotfile is never ours to parse.
+func isHiddenSidecar(path string) bool {
+	return strings.HasPrefix(filepath.Base(path), ".")
+}
+
 func (s Store) ListDatasets() ([]DatasetSummary, error) {
 	matches, err := filepath.Glob(filepath.Join(s.Root, DatasetsDir, "*.yaml"))
 	if err != nil {
@@ -773,6 +785,9 @@ func (s Store) ListDatasets() ([]DatasetSummary, error) {
 	sort.Strings(matches)
 	var summaries []DatasetSummary
 	for _, path := range matches {
+		if isHiddenSidecar(path) {
+			continue
+		}
 		m, err := LoadManifestFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)

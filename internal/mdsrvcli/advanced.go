@@ -270,6 +270,11 @@ func (a app) packCommand() *cobra.Command {
 			if out == "" {
 				out = args[0] + ".mdsrvx"
 			}
+			// PackDataset does its own overwrite check but opens the path directly, so
+			// a FIFO/device target was unlinked and replaced with a regular file.
+			if err := rejectNonRegularOutput(out); err != nil {
+				return err
+			}
 			report, err := store.PackDataset(args[0], out, flags.force)
 			if err != nil {
 				return err

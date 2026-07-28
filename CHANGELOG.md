@@ -2,6 +2,57 @@
 
 ## Unreleased
 
+### Fixed — first dogfood round
+
+The CLI was excluded from the monorepo's dogfood rounds and never adopted its
+`toolcli` hardening, so it carried the fleet's known defect taxonomy intact.
+Eleven findings, all with regression tests.
+
+- **`--json` now emits a failure envelope.** Every error path previously wrote
+  zero bytes to stdout and a human string to stderr, so a consumer told to branch
+  on `error.code` got nothing to parse. Failures now write
+  `{ok:false, command, error:{code,message,exit_code}, timestamp}` to stdout.
+  Without `--json` the old stderr behavior is unchanged.
+- **SIGINT and SIGTERM are handled.** There was no signal handling anywhere in
+  the CLI: `serve` ignored SIGINT entirely and died only on SIGTERM with a raw
+  exit 143, making the documented `canceled`/130 contract unreachable. Both
+  signals now shut down gracefully and exit 130.
+- **`export --out <one of its own inputs> --force` no longer destroys the input.**
+  It truncated the source (a store's own topology) and reported success, leaving
+  the dataset failing its own checksum validation. Identity is tested with
+  `os.SameFile`, so hardlinks and symlinks are caught, not just literal paths.
+- **An existing FIFO, device, or socket is refused as `--out`.** `pack` unlinked
+  the pipe and left a regular file in its place at exit 0.
+- **A macOS AppleDouble sidecar no longer breaks a valid store.** `ListDatasets`
+  globbed `datasets/*.yaml` and hard-failed on the first unparseable match, so
+  the `._<name>.yaml` files macOS writes on exFAT/FAT/SMB — where large
+  trajectory stores live — made `list datasets` exit 2 and `publish static
+  --verify` exit 7. Dotfiles are skipped; a genuinely corrupt manifest still
+  fails.
+- **`--timeout` is enforced.** An exhausted budget produced a full success report
+  at exit 0 because the pure-Go commands never consult the context. It now fails
+  with `backend_timeout` before the command runs. A deadline expiring mid-run
+  still only interrupts GROMACS subprocess work.
+- **`gromacs doctor` verifies identity.** Any binary that exited 0 on
+  `--version` passed as GROMACS (`--gmx-command /usr/bin/true` reported
+  `available:true`). The "GROMACS version:" banner is now required.
+- **Usage and input errors are `invalid_input` (exit 2), not `internal_error`.**
+  An unknown flag, unknown subcommand, bad flag value, or a missing/directory
+  input previously exited 1, whose documented meaning is "unclassified, report
+  it" — so a typo told the caller to file a bug. Adds the `invalid_input` code,
+  sharing exit 2 with `invalid_manifest`.
+- **`publish static` rejects a store that does not exist** instead of exiting 0
+  with `files:null` and creating an empty output directory.
+- **`validate <store> --strict` verifies dataset integrity.** It reported
+  `ok:true` on a store whose dataset failed its own sha256 check.
+- **GROMACS error messages carry the diagnosis, not the banner.** The `Fatal
+  error:` section is extracted instead of ~15 lines of executable path, data
+  prefix, working dir and command line.
+
+Verified clean in the same round and left alone: concurrent index builds and
+ingests, BOM handling, `missing_backend` reporting when no Python backend is
+installed, and non-finite `.gro` coordinates (no `NaN` leaks into JSON).
+
 Initial extraction of the headless MDsrv CLI from
 [sacha-ichbiah/headlessmolstar](https://github.com/sacha-ichbiah/headlessmolstar) into its own repo.
 

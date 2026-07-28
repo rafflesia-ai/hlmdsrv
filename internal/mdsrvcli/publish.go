@@ -2,6 +2,7 @@ package mdsrvcli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -29,6 +30,13 @@ func (a app) publishCommand() *cobra.Command {
 			store, err := mdsrv.OpenStore(flags.store)
 			if err != nil {
 				return err
+			}
+			// OpenStore only resolves a path, so publishing a store that does not exist
+			// used to "succeed": exit 0, files:null, and an empty output directory
+			// created for a store that was never there. Fail on the missing root
+			// instead, before anything is written.
+			if info, statErr := os.Stat(store.Root); statErr != nil || !info.IsDir() {
+				return codedErrorf(codeMissingInput, "store %s does not exist", flags.store)
 			}
 			report, err := store.PublishStatic(flags.out, flags.force)
 			if err != nil {

@@ -135,6 +135,12 @@ func VerifyStaticPublish(root string) (StaticPublishVerification, error) {
 		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".yaml") {
 			return nil
 		}
+		// Skip dotfiles for the same reason ListDatasets does: a macOS AppleDouble
+		// "._<name>.yaml" sidecar is not a manifest we wrote, and failing on it made
+		// publishing a valid store impossible on any non-native filesystem.
+		if isHiddenSidecar(path) {
+			return nil
+		}
 		relative := storeRelPath(absoluteRoot, path)
 		verifyStaticPath(&verification, absoluteRoot, "dataset_manifest", relative)
 		m, err := LoadManifestFile(path)

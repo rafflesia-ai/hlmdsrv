@@ -19,11 +19,28 @@ hlmdsrv ingest --topology structure.gro --trajectory traj.xtc --id run1 --store 
 **Every command speaks JSON.** `--json` (or `--format json`) returns a structured envelope on stdout;
 stderr is for progress and diagnostics. Never parse a human-readable string.
 
-**Failures carry a stable code.** Errors report `error.code` and a distinct exit status. Branch on the
-code, never on the message text:
+**Failures carry a stable code.** With `--json`, a failure writes an envelope to **stdout** — the same
+place a success report goes, so one parse handles both outcomes — and exits non-zero. Without
+`--json`, the failure goes to stderr and stdout stays empty.
+
+```json
+{
+  "ok": false,
+  "command": "frames count",
+  "error": {
+    "code": "missing_input",
+    "message": "open mdsrv-data/datasets/nope.yaml: no such file or directory",
+    "exit_code": 3
+  },
+  "timestamp": "2026-07-28T11:07:24Z"
+}
+```
+
+Branch on `error.code`, never on the message text:
 
 | `code` | Exit | Retryable | What it means |
 | --- | --- | --- | --- |
+| `invalid_input` | 2 | no | Bad invocation: unknown flag or subcommand, bad flag value, or an input path that is missing, a directory, or unreadable |
 | `invalid_manifest` | 2 | no | The job manifest is malformed or failed schema validation |
 | `missing_input` | 3 | no | A topology, trajectory, dataset, or required flag is absent |
 | `missing_backend` | 4 | yes | GROMACS or the Python backend is not installed — run `doctor` |
@@ -32,12 +49,21 @@ code, never on the message text:
 | `validation_failed` | 7 | no | Store or artifact verification failed |
 | `conflict` | 8 | no | The target already exists — pass `--force` if overwriting is intended |
 | `render_failed` | 9 | yes | Visualization or MVS scene generation failed |
-| `canceled` | 130 | no | The context deadline or a signal ended the run |
+| `canceled` | 130 | no | SIGINT or SIGTERM ended the run; long-running commands shut down gracefully first |
 | `internal_error` | 1 | no | Unclassified — capture the envelope and report it |
 
 **Cost a run before paying for it.** `run --plan` and `run --dry-run` resolve inputs, outputs, and
 backend commands without touching GROMACS, so a plan can be validated for free. `explain` does the
 same for a concept or a manifest.
+
+**It refuses to destroy your data.** An `--out` that resolves to one of the run's own inputs is
+rejected (by device+inode, so hardlinks and symlinks are caught too), as is an `--out` naming an
+existing FIFO, device, or socket. Both were previously silent, irreversible overwrites at exit 0.
+
+**`--timeout` is a real bound.** An exhausted budget fails with `backend_timeout` before the command
+runs, rather than producing a success report. Note the limit: a deadline that expires *mid-run* only
+interrupts work that shells out to GROMACS — the pure-Go paths do not poll the context, so a long
+in-process step can still overrun its budget and be reported after the fact.
 
 **It diagnoses itself.** `doctor` checks prerequisites and grades them required vs. optional,
 `self-test` runs an end-to-end smoke over a synthetic dataset, and `debug bundle` writes a zip to

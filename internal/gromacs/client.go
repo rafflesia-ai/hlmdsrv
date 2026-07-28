@@ -192,7 +192,13 @@ func (c Client) Version(ctx context.Context) (string, error) {
 			return strings.TrimSpace(strings.TrimPrefix(line, "GROMACS version:")), nil
 		}
 	}
-	return strings.TrimSpace(firstLine(output)), nil
+	// Identity guard. Falling back to the first line of output meant any binary
+	// that merely exits 0 on --version passed as GROMACS: `--gmx-command
+	// /usr/bin/true` reported available:true with an empty version, and doctor
+	// gave the environment a clean bill of health it had not earned. Real gmx
+	// always prints the "GROMACS version:" banner, so its absence means whatever
+	// ran is not GROMACS.
+	return "", fmt.Errorf("%s ran but did not identify itself as GROMACS (no %q line in --version output)", c.Command[0], "GROMACS version:")
 }
 
 func (c Client) Probe(ctx context.Context, trajectoryPath string) (TrajectoryProbe, error) {
@@ -381,8 +387,8 @@ func (c Client) run(ctx context.Context, stdin []byte, args ...string) (string, 
 	command := append([]string{c.Command[0]}, fullArgs...)
 	text, err := c.commandRunner().Run(ctx, command, stdin)
 	if err != nil {
-		if out := trimOutput(text); out != "" {
-			return text, fmt.Errorf("%s %s failed: %w\n%s", c.Command[0], strings.Join(fullArgs, " "), err, out)
+		if out := gromacsDiagnostic(text); out != "" {
+			return text, fmt.Errorf("%s %s failed: %w: %s", c.Command[0], strings.Join(fullArgs, " "), err, out)
 		}
 		return text, fmt.Errorf("%s %s failed: %w", c.Command[0], strings.Join(fullArgs, " "), err)
 	}
@@ -450,6 +456,41 @@ func trimOutput(value string) string {
 		return value
 	}
 	return value[:4000] + "\n..."
+}
+
+// gromacsDiagnostic extracts the actionable part of a failed gmx run. Every gmx
+// invocation prints a banner, executable path, data prefix, working dir and the
+// command line before anything useful, so attaching the raw output buried the one
+// line that explains the failure under ~15 lines of boilerplate — and put all of
+// it into the JSON error message. GROMACS delimits the real diagnosis with a
+// "Fatal error:" header, so prefer that; fall back to the full output when the
+// failure has no such section (a crash, a missing dynamic library).
+func gromacsDiagnostic(output string) string {
+	lines := strings.Split(output, "\n")
+	for i, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), "Fatal error:") {
+			continue
+		}
+		var detail []string
+		for _, next := range lines[i+1:] {
+			trimmed := strings.TrimSpace(next)
+			// The section ends at the rule or at the boilerplate "For more
+			// information..." pointer that follows every fatal error.
+			if strings.HasPrefix(trimmed, "---") || strings.HasPrefix(trimmed, "For more information") {
+				break
+			}
+			if trimmed == "" && len(detail) > 0 {
+				break
+			}
+			if trimmed != "" {
+				detail = append(detail, trimmed)
+			}
+		}
+		if len(detail) > 0 {
+			return strings.Join(detail, " ")
+		}
+	}
+	return trimOutput(output)
 }
 
 func installHint() string {

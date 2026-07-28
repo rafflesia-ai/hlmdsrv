@@ -81,6 +81,9 @@ func (a app) gromacsProbeCommand() *cobra.Command {
 			if err := gmx.RequireAvailable(); err != nil {
 				return err
 			}
+			if err := requireInputFile(args[0]); err != nil {
+				return err
+			}
 			probe, err := gmx.Probe(cmd.Context(), args[0])
 			if err != nil {
 				return err
@@ -112,7 +115,10 @@ func (a app) gromacsConvertCommand() *cobra.Command {
 			if strings.TrimSpace(flags.out) == "" {
 				return fmt.Errorf("--out is required")
 			}
-			if err := ensureOutputPath(flags.out, flags.force); err != nil {
+			if err := requireInputFile(args[0]); err != nil {
+				return err
+			}
+			if err := ensureOutputPathAgainst(flags.out, flags.force, args[0]); err != nil {
 				return err
 			}
 			gmx := gromacs.New(gromacs.Options{Command: flags.command})
@@ -238,8 +244,85 @@ func bindGromacsBridgeFlags(cmd *cobra.Command, flags *gromacsFlags) {
 }
 
 func ensureOutputPath(path string, force bool) error {
-	if _, err := os.Stat(path); err == nil && !force {
+	return ensureOutputPathAgainst(path, force)
+}
+
+// requireInputFile rejects an input path that is missing, a directory, a special
+// file, or unreadable. Without it these were handed straight to gmx, which failed
+// with its own banner and got classified internal_error (exit 1) — telling a
+// caller to report a bug when the real problem was a fixable path. Readability is
+// checked by opening, since a mode-000 regular file passes every stat check.
+func requireInputFile(path string) error {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return codedErrorf(codeInvalidInput, "input path is required")
+	}
+	info, err := os.Stat(trimmed)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return codedErrorf(codeInvalidInput, "%s: no such file", trimmed)
+		}
+		return codedErrorf(codeInvalidInput, "%s: %v", trimmed, err)
+	}
+	if info.IsDir() {
+		return codedErrorf(codeInvalidInput, "%s is a directory, not a file", trimmed)
+	}
+	if !info.Mode().IsRegular() {
+		return codedErrorf(codeInvalidInput, "%s is not a regular file", trimmed)
+	}
+	file, err := os.Open(trimmed)
+	if err != nil {
+		return codedErrorf(codeInvalidInput, "%s: %v", trimmed, err)
+	}
+	_ = file.Close()
+	return nil
+}
+
+// rejectNonRegularOutput refuses an existing FIFO, device, or socket as an output
+// target. Directories are left to the caller: several commands legitimately write
+// into one.
+func rejectNonRegularOutput(path string) error {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() || info.Mode().IsRegular() {
+		return nil
+	}
+	return codedErrorf(codeInvalidInput, "%s is not a regular file; refusing to write to it", path)
+}
+
+// ensureOutputPathAgainst prepares an output path, refusing two destructive
+// cases before any work is done.
+//
+// A non-regular existing target (FIFO, device, socket) is refused because
+// writing "through" it does not mean what a caller expects: opening a named pipe
+// blocks until a reader appears, and the writer would otherwise unlink the pipe
+// and leave a regular file where another process expected to keep reading.
+//
+// An output that resolves to one of the run's own inputs is refused because the
+// tool truncates the output the instant it opens it — with --force that silently
+// destroyed the source (a store's own topology file) and reported success.
+// Identity is tested with os.SameFile (device+inode), so a hardlink or a symlink
+// aliasing the input is caught too, not just a literal path match.
+func ensureOutputPathAgainst(path string, force bool, inputs ...string) error {
+	info, err := os.Stat(path)
+	switch {
+	case err == nil && !info.Mode().IsRegular() && !info.IsDir():
+		return codedErrorf(codeInvalidInput, "%s is not a regular file; refusing to write to it", path)
+	case err == nil && !force:
 		return fmt.Errorf("%s already exists; pass --force to overwrite", path)
+	}
+	if err == nil {
+		for _, input := range inputs {
+			if input == "" {
+				continue
+			}
+			inputInfo, statErr := os.Stat(input)
+			if statErr != nil {
+				continue
+			}
+			if os.SameFile(info, inputInfo) {
+				return codedErrorf(codeInvalidInput, "output %s is also an input of this run; refusing to overwrite it", path)
+			}
+		}
 	}
 	dir := filepath.Dir(path)
 	if dir == "." || dir == "" {
