@@ -3,6 +3,7 @@ package mdsrv
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -52,6 +53,38 @@ func TestListDatasetsStillFailsOnACorruptManifest(t *testing.T) {
 	}
 	if _, err := store.ListDatasets(); err == nil {
 		t.Fatal("a corrupt (non-dotfile) manifest must still be reported")
+	}
+}
+
+// Ninth pass: the manifest path is derived from the id, so on a case-insensitive
+// filesystem (macOS, Windows, exFAT — where large trajectory stores live)
+// `dataset inspect alpha` opened Alpha.yaml and returned a dataset whose id was
+// "Alpha", while the same store on Linux reported no such dataset. The requested
+// id is now compared against the loaded one.
+//
+// The mismatch is constructed explicitly rather than by relying on the host
+// filesystem's case behavior, so the test is deterministic everywhere.
+func TestLoadDatasetRejectsAnIDThatDoesNotMatchTheManifest(t *testing.T) {
+	store := newStoreWithDataset(t) // holds a dataset whose metadata id is "demo"
+
+	// Write the same manifest under a second name; its metadata still says "demo".
+	original, err := os.ReadFile(store.ManifestPath("demo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store.Root, DatasetsDir, "other.yaml"), original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.LoadDataset("other"); err == nil {
+		t.Fatal("loading by an id the manifest does not carry must fail")
+	} else if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should read as not-found, got: %v", err)
+	}
+
+	// The real id still loads.
+	if _, err := store.LoadDataset("demo"); err != nil {
+		t.Errorf("the matching id must still load: %v", err)
 	}
 }
 

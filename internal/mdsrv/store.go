@@ -649,7 +649,20 @@ func (s Store) LoadDataset(id string) (Manifest, error) {
 	if err := ValidateID(id); err != nil {
 		return Manifest{}, fmt.Errorf("id: %w", err)
 	}
-	return LoadManifestFile(s.ManifestPath(id))
+	m, err := LoadManifestFile(s.ManifestPath(id))
+	if err != nil {
+		return Manifest{}, err
+	}
+	// The manifest path is derived from the id, so on a case-insensitive
+	// filesystem (macOS, Windows, exFAT — where large trajectory stores tend to
+	// live) `dataset inspect alpha` happily opened Alpha.yaml and returned a
+	// dataset whose id was "Alpha". The same store on Linux, including this repo's
+	// own container image, reports no such dataset. Comparing the id we asked for
+	// against the one we got makes the answer identical on every filesystem.
+	if m.Metadata.ID != "" && m.Metadata.ID != id {
+		return Manifest{}, fmt.Errorf("dataset %q not found (the store holds %q, which differs only by case)", id, m.Metadata.ID)
+	}
+	return m, nil
 }
 
 func (s Store) ProbeDataset(ctx context.Context, id string, gromacsCommand string) (Manifest, error) {

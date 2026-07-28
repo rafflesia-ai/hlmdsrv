@@ -96,6 +96,23 @@ A pass over surfaces the first two rounds never touched.
 - **More `internal_error` misclassification**: `publish static --out <regular
   file>`, `pack --out <dir>`, and malformed or empty batch JSONL all exited 1.
 
+### Fixed — ninth pass (portability)
+
+- **A wrong-cased dataset id resolved to the wrong dataset.** The manifest path is
+  derived from the id, so on a case-insensitive filesystem — macOS, Windows,
+  exFAT, which is where large trajectory stores live — `dataset inspect alpha`
+  opened `Alpha.yaml` and returned a dataset whose id was `Alpha`. `frames count`
+  and `validate` did the same. The identical store on Linux, including this
+  repo's own container image, reported no such dataset: the same store answered
+  differently depending on where it was read. The requested id is now compared
+  against the loaded manifest's, so every filesystem gives the same answer.
+
+Exercised for the first time and found correct: the full workflow inside the
+Linux container image (init, ingest without GROMACS, list, inspect, frames get
+via MDTraj, doctor, self-test); and scale — a 2000-frame trajectory ingests,
+chunks into 16, round-trips through pack/unpack, and its boundary frames (0, 127,
+128, 1999) match raw `gmx trjconv` exactly.
+
 ### Fixed — eighth pass (capability limits)
 
 - **An unsupported choice reported `internal_error`.** MDAnalysis implements
