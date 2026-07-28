@@ -96,6 +96,32 @@ A pass over surfaces the first two rounds never touched.
 - **More `internal_error` misclassification**: `publish static --out <regular
   file>`, `pack --out <dir>`, and malformed or empty batch JSONL all exited 1.
 
+### Fixed — fourth pass (orchestration, jobs, lifecycle)
+
+- **The job queue's backpressure response had no typed code.** Every other server
+  status maps to one (`bad_request`, `forbidden`, …), but 429 fell through to a
+  generic `"error"` and 502 to `"internal_error"` — and 429 is the one response a
+  client most needs to branch on, being the retryable one. Now
+  `too_many_requests` and `bad_gateway`.
+- **Flag-range validation was `internal_error`.** `--frames must be at least 2`,
+  `--workers cannot be negative` and the rest of that class exited 1, telling the
+  caller to file a bug about their own typo. Now `invalid_input`.
+- **A dead `--server` was `internal_error`.** A connection refused is a backend
+  that is not reachable, so it now reports `missing_backend` like any other
+  unavailable backend.
+- **`unpack` on a file that is not a zip** was `internal_error`; now
+  `invalid_input` with a message naming the archive.
+
+After these, a sweep of 15 ordinary misuse cases produces **no `internal_error`
+at all** — that code is now reserved for genuinely unclassified faults, as the
+table says.
+
+Probed and found correct in this pass, so unchanged: `run --plan` is faithful to
+what `run` executes (same index path, same chunking); the queue applies real
+backpressure (3 accepted / 7 rejected at `--max-queue 2`) rather than blocking;
+the jobs lifecycle (status, logs, events, retry, cancel, prune) behaves; and
+pack→unpack round-trips with matching frame counts.
+
 Probed and found correct, so deliberately unchanged: `.mdsrvx` archive extraction
 rejects path traversal (`../`, absolute, and nested forms) with `unsafe_path` and
 creates nothing outside the store; the HTTP server enforces auth (401), read-only

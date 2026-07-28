@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -456,6 +457,58 @@ func TestClassifierCoversPathShapeFailures(t *testing.T) {
 		"/x is not a regular file":                   codeInvalidInput,
 		"store /x does not exist":                    codeMissingInput,
 		`gromacs command "true" is not usable: nope`: codeMissingBackend,
+	} {
+		if got := classifyErrorCode(errors.New(message)); got != want {
+			t.Errorf("classify(%q) = %q, want %q", message, got, want)
+		}
+	}
+}
+
+// Fourth pass: every HTTP status the server returns must carry a typed code.
+// 429 (job queue full) fell through to a generic "error" and 502 to
+// "internal_error" — and backpressure is the one response a client most needs to
+// branch on, because it is the retryable one.
+func TestHTTPStatusCodesAreTyped(t *testing.T) {
+	for status, want := range map[int]string{
+		http.StatusBadRequest:          "bad_request",
+		http.StatusUnauthorized:        "unauthorized",
+		http.StatusForbidden:           "forbidden",
+		http.StatusNotFound:            "not_found",
+		http.StatusMethodNotAllowed:    "method_not_allowed",
+		http.StatusTooManyRequests:     "too_many_requests",
+		http.StatusBadGateway:          "bad_gateway",
+		http.StatusServiceUnavailable:  "service_unavailable",
+		http.StatusInternalServerError: "internal_error",
+	} {
+		if got := httpStatusCode(status); got != want {
+			t.Errorf("httpStatusCode(%d) = %q, want %q", status, got, want)
+		}
+	}
+	// Every status the server actually writes must be typed; none may fall through
+	// to the generic "error" bucket.
+	for _, status := range []int{
+		http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden,
+		http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusTooManyRequests,
+		http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusInternalServerError,
+	} {
+		if httpStatusCode(status) == "error" {
+			t.Errorf("status %d still falls through to the generic \"error\" code", status)
+		}
+	}
+}
+
+// Explicit flag-range validation is caller-fixable, so it must not land in
+// internal_error, which tells the caller to file a bug about their own typo. A
+// dead --server is likewise the backend being unavailable, not an internal fault.
+func TestClassifierCoversFlagAndNetworkFailures(t *testing.T) {
+	for message, want := range map[string]errorCode{
+		"--frames must be at least 2":                  codeInvalidInput,
+		"--workers cannot be negative":                 codeInvalidInput,
+		"--iterations must be at least 1":              codeInvalidInput,
+		"x.gro is not a valid .mdsrvx archive":         codeInvalidInput,
+		"dial tcp 127.0.0.1:1: connection refused":     codeMissingBackend,
+		"Get \"http://nope/\": dial tcp: no such host": codeMissingBackend,
+		"--out is required":                            codeMissingInput,
 	} {
 		if got := classifyErrorCode(errors.New(message)); got != want {
 			t.Errorf("classify(%q) = %q, want %q", message, got, want)

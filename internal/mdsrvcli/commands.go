@@ -2196,6 +2196,15 @@ func httpStatusCode(status int) string {
 		return "not_found"
 	case http.StatusMethodNotAllowed:
 		return "method_not_allowed"
+	// The server returns 429 when the job queue is full and 502 when an upstream
+	// call fails, but neither was mapped: 429 fell through to the generic "error"
+	// and 502 to "internal_error". Backpressure is the one server response a
+	// client most needs to branch on — it is the retryable one — so it cannot be
+	// the only response without a typed code.
+	case http.StatusTooManyRequests:
+		return "too_many_requests"
+	case http.StatusBadGateway:
+		return "bad_gateway"
 	case http.StatusServiceUnavailable:
 		return "service_unavailable"
 	default:

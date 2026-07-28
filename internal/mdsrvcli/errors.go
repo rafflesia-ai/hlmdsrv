@@ -127,7 +127,15 @@ func classifyErrorCode(err error) errorCode {
 	case strings.Contains(message, "gromacs command") && strings.Contains(message, "not found"),
 		strings.Contains(message, "gromacs command") && strings.Contains(message, "not usable"),
 		strings.Contains(message, "python backend failed"),
-		strings.Contains(message, "trajectory backend"):
+		strings.Contains(message, "trajectory backend"),
+		// A remote --server that cannot be reached is a backend that is not
+		// available, not an unclassified internal fault. Without this, pointing
+		// `jobs` at a dead server reported internal_error, whose documented meaning
+		// tells the caller to file a bug rather than check the address.
+		strings.Contains(message, "connection refused"),
+		strings.Contains(message, "no such host"),
+		strings.Contains(message, "network is unreachable"),
+		strings.Contains(message, "dial tcp"):
 		return codeMissingBackend
 	// A path that exists but is the wrong kind of thing, or an output the caller
 	// pointed somewhere unusable. These are fixable at the call site, so they must
@@ -135,7 +143,18 @@ func classifyErrorCode(err error) errorCode {
 	// "unclassified, report it".
 	case strings.Contains(message, "is not a directory"),
 		strings.Contains(message, "is a directory"),
-		strings.Contains(message, "is not a regular file"):
+		strings.Contains(message, "is not a regular file"),
+		// Explicit flag-range validation ("--frames must be at least 2",
+		// "--workers cannot be negative"). These are returned as plain errors from
+		// RunE, so without a pattern they land in internal_error and tell the caller
+		// to file a bug about their own typo. The "--x is required" variants are
+		// already covered by the missing_input branch below.
+		strings.Contains(message, "must be at least"),
+		strings.Contains(message, "must be greater"),
+		strings.Contains(message, "must be positive"),
+		strings.Contains(message, "cannot be negative"),
+		// A file handed to `unpack` that is not a zip.
+		strings.Contains(message, "is not a valid"):
 		return codeInvalidInput
 	case strings.Contains(message, "deadline exceeded"),
 		strings.Contains(message, "timed out"),

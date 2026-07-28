@@ -90,6 +90,12 @@ func (s Store) PackDataset(id, out string, force bool) (PackReport, error) {
 func (s Store) UnpackArchive(path string, force bool) (UnpackReport, error) {
 	reader, err := zip.OpenReader(path)
 	if err != nil {
+		// A file that is not a zip is a caller-fixable input, but archive/zip's bare
+		// "not a valid zip file" matched no classifier pattern and surfaced as
+		// internal_error, whose documented meaning is "unclassified, report it".
+		if !os.IsNotExist(err) {
+			return UnpackReport{}, fmt.Errorf("%s is not a valid .mdsrvx archive: %w", path, err)
+		}
 		return UnpackReport{}, err
 	}
 	defer reader.Close()
