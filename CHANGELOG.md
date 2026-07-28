@@ -96,6 +96,22 @@ A pass over surfaces the first two rounds never touched.
 - **More `internal_error` misclassification**: `publish static --out <regular
   file>`, `pack --out <dir>`, and malformed or empty batch JSONL all exited 1.
 
+### Fixed — eighth pass (capability limits)
+
+- **An unsupported choice reported `internal_error`.** MDAnalysis implements
+  neither `sasa`, `rmsf` nor `hbonds`, and saying so is a capability answer, not
+  a crash report. Every `unsupported X` message in the codebase names something
+  the caller picked — analysis type, backend, output format, shell, provider,
+  chunk encoding — and all of them exited 1, telling the caller to file a bug.
+  They are now `invalid_input`; the version variants (`unsupported manifest /
+  store / job version`) are `invalid_manifest`. Both exit 2.
+
+Exercised for the first time and found correct: all nine analyses through the
+MDAnalysis engine (six implemented, three cleanly unsupported); MDAnalysis as the
+*sole* backend with MDTraj absent, where `doctor` reports `mdtraj=false` and
+auto-detection picks MDAnalysis; and `compat --docker` against a nonexistent
+image, which fails `validation_failed` with the real docker error captured.
+
 ### Fixed — seventh pass (units, empty collections)
 
 First round with MDAnalysis installed, so the second Python engine was exercised.

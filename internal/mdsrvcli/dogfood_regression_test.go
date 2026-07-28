@@ -706,6 +706,46 @@ func TestAnalysisRecordsBackendAndUnit(t *testing.T) {
 	}
 }
 
+// Eighth pass: "unsupported X" names something the caller chose — an analysis
+// type, backend, format, shell, provider or encoding — so none of them is an
+// unclassified internal fault. MDAnalysis implements neither sasa, rmsf nor
+// hbonds, and saying so is a capability answer, not a crash report. This was only
+// reachable once MDAnalysis was actually installed, which is why earlier
+// convergence sweeps missed it.
+func TestUnsupportedChoicesAreNotInternalErrors(t *testing.T) {
+	callerChoices := []string{
+		`python backend analyze: unsupported analysis type 'sasa'`,
+		`unsupported backend "nope"`,
+		`unsupported trace format "xml"`,
+		`unsupported frame chunk encoding "gzip"`,
+		`unsupported shell "csh"`,
+		`unsupported provider "nowhere"`,
+		`unsupported GROMACS fallback analysis "sasa"`,
+	}
+	for _, message := range callerChoices {
+		if got := classifyErrorCode(errors.New(message)); got != codeInvalidInput {
+			t.Errorf("classify(%q) = %q, want %q", message, got, codeInvalidInput)
+		}
+	}
+	// Version mismatches are about the data, not the invocation.
+	versionMismatches := []string{
+		`unsupported manifest version "mdsrv.job/v9"`,
+		`unsupported store version "mdsrv.store/v9"; expected "mdsrv.store/v1"`,
+		`unsupported job version 9`,
+	}
+	for _, message := range versionMismatches {
+		if got := classifyErrorCode(errors.New(message)); got != codeInvalidManifest {
+			t.Errorf("classify(%q) = %q, want %q", message, got, codeInvalidManifest)
+		}
+	}
+	// Both share exit 2: fix the call or the data, do not retry.
+	for _, message := range append(callerChoices, versionMismatches...) {
+		if got := ExitCode(&CLIError{Code: classifyErrorCode(errors.New(message))}); got != 2 {
+			t.Errorf("exit for %q = %d, want 2", message, got)
+		}
+	}
+}
+
 // Finding #9: publishing a store that does not exist reported success with
 // files:null and left an empty output directory behind.
 func TestPublishRejectsMissingStore(t *testing.T) {

@@ -122,7 +122,12 @@ func classifyErrorCode(err error) errorCode {
 		strings.Contains(message, "decode json"),
 		strings.Contains(message, "version is required"),
 		strings.Contains(message, "metadata.id is required"),
-		strings.Contains(message, "job requires at least one trajectory"):
+		strings.Contains(message, "job requires at least one trajectory"),
+		// Data written by an incompatible version of the format. Caller-fixable by
+		// migrating, and definitely not an unclassified internal fault.
+		strings.Contains(message, "unsupported manifest version"),
+		strings.Contains(message, "unsupported store version"),
+		strings.Contains(message, "unsupported job version"):
 		return codeInvalidManifest
 	case strings.Contains(message, "gromacs command") && strings.Contains(message, "not found"),
 		strings.Contains(message, "gromacs command") && strings.Contains(message, "not usable"),
@@ -171,7 +176,12 @@ func classifyErrorCode(err error) errorCode {
 		// analysis the chosen fallback does not implement.
 		strings.Contains(message, "selection is required"),
 		strings.Contains(message, "requires selections"),
-		strings.Contains(message, "unsupported gromacs fallback"):
+		// Every "unsupported X" in this codebase names something the caller chose --
+		// an analysis type, a backend, an output format, a shell, a provider, an
+		// encoding. None is an internal fault. MDAnalysis, for instance, implements
+		// neither sasa, rmsf nor hbonds, and saying so is a capability answer, not a
+		// crash report. (The version variants are handled as invalid_manifest above.)
+		strings.Contains(message, "unsupported "):
 		return codeInvalidInput
 	case strings.Contains(message, "deadline exceeded"),
 		strings.Contains(message, "timed out"),
