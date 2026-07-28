@@ -477,7 +477,7 @@ func (a app) runAnalyze(ctx context.Context, datasetID, kind string, flags *anal
 		Selections:     selectionsFor(kind, flags),
 		ReferenceFrame: flags.referenceFrame,
 		Cutoff:         flags.cutoff,
-		Output:         outputAnalysisPath(datasetID, kind, flags.out, flags.format),
+		Output:         outputAnalysisPath(datasetID, firstNonEmpty(flags.id, kind), flags.out, flags.format),
 		Format:         flags.format,
 	}
 	trace, err := analyzeWithPolicy(ctx, store, m, datasetID, request, flags.backend, flags.gmxCommand)
@@ -509,6 +509,7 @@ func (a app) runAnalyze(ctx context.Context, datasetID, kind string, flags *anal
 			Cutoff:         flags.cutoff,
 			Frames:         "all",
 			Output:         recordedOutput,
+			Backend:        trace.Backend,
 		}); err != nil {
 			return err
 		}
@@ -1111,6 +1112,12 @@ func isSingleGroupAnalysis(kind string) bool {
 	}
 }
 
+// outputAnalysisPath derives the default trace path. It is keyed on the analysis
+// *id* (which defaults to the type), matching how RecordAnalysis keys manifest
+// entries. Keying on the type alone meant two analyses of the same type with
+// different --id wrote to one file: the manifest then held two entries, with
+// different backends, pointing at a single trace, so at most one of them
+// described the file that was actually there.
 func outputAnalysisPath(datasetID, kind, out, format string) string {
 	if out != "" {
 		return out

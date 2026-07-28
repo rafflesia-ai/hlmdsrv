@@ -1803,7 +1803,7 @@ func handleDataset(w http.ResponseWriter, r *http.Request, store mdsrv.Store, op
 			if relative, ok := storeRelativePathIfInside(store.Root, outputPath); ok {
 				recordedOutput = relative
 			}
-			_ = store.RecordAnalysis(id, mdsrv.Analysis{ID: firstNonEmpty(request.ID, request.Type), Type: request.Type, Selection: request.Selection, Selections: request.Selections, ReferenceFrame: request.ReferenceFrame, Frames: "all", Output: recordedOutput})
+			_ = store.RecordAnalysis(id, mdsrv.Analysis{ID: firstNonEmpty(request.ID, request.Type), Type: request.Type, Selection: request.Selection, Selections: request.Selections, ReferenceFrame: request.ReferenceFrame, Frames: "all", Output: recordedOutput, Backend: trace.Backend})
 			writeHTTPJSON(w, http.StatusOK, trace)
 			return
 		}

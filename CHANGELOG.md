@@ -96,6 +96,35 @@ A pass over surfaces the first two rounds never touched.
 - **More `internal_error` misclassification**: `publish static --out <regular
   file>`, `pack --out <dir>`, and malformed or empty batch JSONL all exited 1.
 
+### Fixed — sixth pass (analyze bridge, selections)
+
+First round with a real MDTraj install, so the Python analysis bridge was
+exercised end to end rather than only through its unavailable path.
+
+- **An argument mistake reported as a missing backend.** Every python-bridge
+  error carries a generic `python backend failed:` prefix, and that prefix was
+  matched as `missing_backend` — so `analyze sasa` without a selection told the
+  caller to install MDTraj while MDTraj was installed and working. Only the
+  genuine unavailability signals now map to `missing_backend`; a missing
+  selection is `invalid_input`, consistently across all nine analyses.
+- **Analyses record which backend produced them.** MDTraj and GROMACS do not
+  always compute the same quantity under one name: on a demo trajectory their
+  `rgyr` agrees to ~9 significant figures, but their `rmsd` differs by a
+  consistent factor of ~2.45 (different mass-weighting and fitting conventions).
+  Stored analyses now carry a `backend` field, so a trace can be attributed.
+- **Two analyses of one type overwrote each other's trace.** The trace path was
+  keyed on the analysis *type* while manifest entries are keyed on the *id*, so
+  `--id rmsd-py` and `--id rmsd-gmx` both wrote `traces/<ds>-rmsd.csv`; the
+  manifest then held two entries with different backends pointing at one file.
+  Paths are now keyed on the id, matching the manifest.
+- **`selection save --kind` accepted anything.** An unrecognized kind was stored
+  verbatim, leaving a selection nothing could interpret (no `atom_count`, no
+  usable dialect). Now validated against the known set.
+- **Selection errors leaked Go internals**: a malformed expression surfaced the
+  raw `strconv.Atoi: parsing "!!!": invalid syntax`. Now names the offending term
+  and its expected form. Out-of-range indices, bad ranges and unknown resolve
+  targets are `invalid_input` rather than `internal_error`.
+
 ### Fixed — fifth pass (codec, limits, envelope hole)
 
 - **The error envelope could produce two JSON documents.** Commands that write

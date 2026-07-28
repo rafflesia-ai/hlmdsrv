@@ -126,8 +126,14 @@ func classifyErrorCode(err error) errorCode {
 		return codeInvalidManifest
 	case strings.Contains(message, "gromacs command") && strings.Contains(message, "not found"),
 		strings.Contains(message, "gromacs command") && strings.Contains(message, "not usable"),
-		strings.Contains(message, "python backend failed"),
-		strings.Contains(message, "trajectory backend"),
+		// Match the specific unavailability signals, NOT the generic "python backend
+		// failed" prefix that every python-bridge error carries. That prefix made an
+		// argument mistake ("selection is required") report as a missing backend,
+		// telling the caller to install MDTraj while MDTraj was installed and working.
+		strings.Contains(message, "trajectory backend unavailable"),
+		strings.Contains(message, "install mdtraj"),
+		strings.Contains(message, "no python interpreter"),
+		strings.Contains(message, "python backend is unavailable"),
 		// A remote --server that cannot be reached is a backend that is not
 		// available, not an unclassified internal fault. Without this, pointing
 		// `jobs` at a dead server reported internal_error, whose documented meaning
@@ -154,7 +160,18 @@ func classifyErrorCode(err error) errorCode {
 		strings.Contains(message, "must be positive"),
 		strings.Contains(message, "cannot be negative"),
 		// A file handed to `unpack` that is not a zip.
-		strings.Contains(message, "is not a valid"):
+		strings.Contains(message, "is not a valid"),
+		// Selection expressions and dialects the caller can correct.
+		strings.Contains(message, "out of range"),
+		strings.Contains(message, "invalid atom index selection"),
+		strings.Contains(message, "invalid descending range"),
+		strings.Contains(message, "unknown selection kind"),
+		strings.Contains(message, "cannot convert"),
+		// Analysis arguments the caller can supply: a required selection, or an
+		// analysis the chosen fallback does not implement.
+		strings.Contains(message, "selection is required"),
+		strings.Contains(message, "requires selections"),
+		strings.Contains(message, "unsupported gromacs fallback"):
 		return codeInvalidInput
 	case strings.Contains(message, "deadline exceeded"),
 		strings.Contains(message, "timed out"),

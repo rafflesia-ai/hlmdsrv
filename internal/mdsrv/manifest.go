@@ -118,6 +118,14 @@ type Analysis struct {
 	Frames         string            `json:"frames,omitempty" yaml:"frames,omitempty"`
 	Format         string            `json:"format,omitempty" yaml:"format,omitempty"`
 	Output         string            `json:"output,omitempty" yaml:"output,omitempty"`
+	// Backend records which engine produced the trace. The engines do not always
+	// compute the same quantity under the same analysis name -- measured on a demo
+	// trajectory, mdtraj and GROMACS rgyr agree to ~9 significant figures, but
+	// their rmsd differs by a consistent factor of ~2.45 (different mass-weighting
+	// and fitting conventions). Both write to the same traces/<id>-<type>.csv, so
+	// without this field a stored trace cannot be attributed and two runs are
+	// silently incomparable.
+	Backend string `json:"backend,omitempty" yaml:"backend,omitempty"`
 }
 
 type Visualization struct {

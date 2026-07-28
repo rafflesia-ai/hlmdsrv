@@ -31,11 +31,11 @@ func ParseAtomSelection(value string, atomCount int) ([]int, error) {
 			bounds := strings.SplitN(part, "-", 2)
 			start, err := strconv.Atoi(strings.TrimSpace(bounds[0]))
 			if err != nil {
-				return nil, err
+				return nil, invalidAtomSelection(part)
 			}
 			end, err := strconv.Atoi(strings.TrimSpace(bounds[1]))
 			if err != nil {
-				return nil, err
+				return nil, invalidAtomSelection(part)
 			}
 			if end < start {
 				return nil, fmt.Errorf("invalid descending range %d-%d", start, end)
@@ -53,7 +53,7 @@ func ParseAtomSelection(value string, atomCount int) ([]int, error) {
 		}
 		index, err := strconv.Atoi(part)
 		if err != nil {
-			return nil, err
+			return nil, invalidAtomSelection(part)
 		}
 		if index < 1 || index > atomCount {
 			return nil, fmt.Errorf("atom index %d out of range 1..%d", index, atomCount)
@@ -169,6 +169,35 @@ func ResolveSelectionMapForTarget(m Manifest, values map[string]string, target s
 		resolved[key] = next
 	}
 	return resolved, nil
+}
+
+// invalidAtomSelection reports an unparseable atom-index term without leaking Go
+// internals: a malformed expression used to surface the raw
+// `strconv.Atoi: parsing "!!!": invalid syntax`, which names an implementation
+// detail rather than the thing the caller typed.
+func invalidAtomSelection(part string) error {
+	return fmt.Errorf("invalid atom index selection %q: expected an index or START-END range", part)
+}
+
+// SelectionKinds are the selection dialects the store understands. "" and "raw"
+// mean an uninterpreted passthrough expression.
+var SelectionKinds = []string{"atom-index", "mdtraj", "mdanalysis", "python", "mvs", "raw"}
+
+// ValidateSelectionKind rejects a kind outside the known set. normalizeSelectionKind
+// passes an unrecognized value through unchanged, so `--kind bogus` was persisted
+// verbatim into the store and produced a selection nothing could interpret --
+// stored with no atom_count, silently useless.
+func ValidateSelectionKind(value string) error {
+	normalized := normalizeSelectionKind(value)
+	if normalized == "" || normalized == "raw" {
+		return nil
+	}
+	for _, known := range SelectionKinds {
+		if normalized == known {
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown selection kind %q: expected one of %s", value, strings.Join(SelectionKinds, ", "))
 }
 
 func normalizeSelectionKind(value string) string {

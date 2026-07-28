@@ -732,6 +732,7 @@ func (q *serverJobQueue) executeAnalysis(ctx context.Context, id string, request
 		Cutoff:         request.Analysis.Cutoff,
 		Frames:         "all",
 		Output:         recordedOutput,
+		Backend:        trace.Backend,
 	}); err != nil {
 		return nil, err
 	}

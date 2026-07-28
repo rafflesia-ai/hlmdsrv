@@ -587,6 +587,66 @@ func TestClassifierCoversLimitsAndChecks(t *testing.T) {
 	}
 }
 
+// Sixth pass: two analyses of the same type with different --id wrote to one
+// trace file, because the path was keyed on the type while manifest entries are
+// keyed on the id. The manifest then held two entries — potentially with
+// different backends — pointing at a single file, so at most one described it.
+func TestAnalysisTracePathIsKeyedOnID(t *testing.T) {
+	byType := outputAnalysisPath("demo", "rmsd", "", "csv")
+	byID := outputAnalysisPath("demo", "rmsd-py", "", "csv")
+	if byType == byID {
+		t.Fatalf("two analysis ids must not share a trace path, both gave %q", byType)
+	}
+	if byID != "traces/demo-rmsd-py.csv" {
+		t.Errorf("path = %q, want traces/demo-rmsd-py.csv", byID)
+	}
+	// An explicit --out still wins.
+	if got := outputAnalysisPath("demo", "rmsd", "custom/where.dat", "json"); got != "custom/where.dat" {
+		t.Errorf("explicit --out = %q, want custom/where.dat", got)
+	}
+}
+
+// The generic "python backend failed" prefix rides on EVERY python-bridge error,
+// so matching it as missing_backend told a caller to install MDTraj when MDTraj
+// was installed and their arguments were the problem. Only the genuine
+// unavailability signals may map to missing_backend.
+func TestClassifierDistinguishesBackendFromArguments(t *testing.T) {
+	argumentFailures := []string{
+		`python backend failed: python backend analyze: selection is required; GROMACS fallback failed: atom index selection is required`,
+		`python backend failed: python backend analyze: contacts analysis requires selections a, b`,
+		`python backend failed: GROMACS fallback failed: unsupported GROMACS fallback analysis "sasa"`,
+	}
+	for _, message := range argumentFailures {
+		if got := classifyErrorCode(errors.New(message)); got != codeInvalidInput {
+			t.Errorf("argument failure classified %q, want %q:\n  %s", got, codeInvalidInput, message)
+		}
+	}
+	unavailable := []string{
+		`python backend failed: python3 backend analyze: trajectory backend unavailable: install mdtraj`,
+		`python backend failed: no python interpreter found`,
+	}
+	for _, message := range unavailable {
+		if got := classifyErrorCode(errors.New(message)); got != codeMissingBackend {
+			t.Errorf("unavailable backend classified %q, want %q:\n  %s", got, codeMissingBackend, message)
+		}
+	}
+}
+
+// An unrecognized --kind was stored verbatim, leaving a selection in the store
+// that nothing could interpret.
+func TestValidateSelectionKind(t *testing.T) {
+	for _, kind := range []string{"atom-index", "mdtraj", "mdanalysis", "python", "mvs", "raw", "", "gmx", "mda"} {
+		if err := mdsrv.ValidateSelectionKind(kind); err != nil {
+			t.Errorf("kind %q must be accepted: %v", kind, err)
+		}
+	}
+	for _, kind := range []string{"bogus-kind", "amber", "nonsense"} {
+		if err := mdsrv.ValidateSelectionKind(kind); err == nil {
+			t.Errorf("kind %q must be rejected", kind)
+		}
+	}
+}
+
 // Finding #9: publishing a store that does not exist reported success with
 // files:null and left an empty output directory behind.
 func TestPublishRejectsMissingStore(t *testing.T) {

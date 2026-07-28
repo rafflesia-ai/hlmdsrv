@@ -382,6 +382,11 @@ func (a app) selectionCommand() *cobra.Command {
 			if strings.TrimSpace(flags.expression) == "" {
 				return fmt.Errorf("--expression or --expr is required")
 			}
+			// An unrecognized --kind used to be stored verbatim, leaving a selection
+			// in the store that nothing can interpret.
+			if err := mdsrv.ValidateSelectionKind(flags.kind); err != nil {
+				return err
+			}
 			store, err := mdsrv.OpenStore(flags.store)
 			if err != nil {
 				return err

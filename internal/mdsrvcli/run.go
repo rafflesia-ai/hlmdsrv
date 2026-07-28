@@ -516,6 +516,7 @@ func (a app) runJobAnalysis(ctx context.Context, store mdsrv.Store, datasetID st
 		Frames:         firstNonEmpty(analysis.Frames, "all"),
 		Format:         analysis.Format,
 		Output:         recordedOutput,
+		Backend:        trace.Backend,
 	})
 	return recordedOutput, err
 }
