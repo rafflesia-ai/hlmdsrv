@@ -53,6 +53,34 @@ Verified clean in the same round and left alone: concurrent index builds and
 ingests, BOM handling, `missing_backend` reporting when no Python backend is
 installed, and non-finite `.gro` coordinates (no `NaN` leaks into JSON).
 
+### Fixed — completeness sweep
+
+Auditing the fixes above for sibling code paths showed the guards had only been
+wired where they were probed by hand.
+
+- **`frames get`, `pack`, and `debug bundle` still truncated a store's own
+  topology** when `--out` named it. They know a dataset id rather than resolved
+  input paths, so they need a dataset-aware check.
+- **Ten commands could still be pointed at a FIFO**, including `frames get`,
+  `bench`, `debug bundle`, and `config --config`. Reading one blocks in `open(2)`
+  just as writing one does, so the config path is now screened in both
+  directions.
+- **A second SIGINT was ignored.** Handling signals turns a process parked in a
+  blocking syscall into an unkillable one, because cancellation is cooperative
+  and nothing is polling — before the previous change, the default disposition
+  would have killed it. A second signal now terminates immediately. Relying on
+  `signal.Stop` to restore the default was tried first and does not work: it can
+  leave the signal ignored rather than fatal.
+- **`export` and the GROMACS bridge fabricated success.** Availability was only a
+  PATH lookup, so a stub binary passed and the commands reported an `output` path
+  that had never been created. The run paths now require a *verified* GROMACS
+  (matching `doctor` and `capabilities`) and verify that the file was actually
+  produced. An unusable backend reports `missing_backend` consistently across
+  `probe`, `convert`, `extract`, and `export`, where it previously produced a mix
+  of exit 0, 1, and 9.
+- **`ingest` validates its local `--topology`/`--trajectory`** instead of
+  surfacing a directory as `internal_error`.
+
 Initial extraction of the headless MDsrv CLI from
 [sacha-ichbiah/headlessmolstar](https://github.com/sacha-ichbiah/headlessmolstar) into its own repo.
 

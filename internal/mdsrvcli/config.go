@@ -155,6 +155,12 @@ func configPath(override string) (string, error) {
 }
 
 func loadConfig(path string) (cliConfig, error) {
+	// Reading a FIFO blocks in open(2) until a writer appears, exactly as writing
+	// one blocks waiting for a reader, so the config path has to be screened on the
+	// way in as well as on the way out.
+	if err := rejectNonRegularPath(path, "read"); err != nil {
+		return cliConfig{}, err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return cliConfig{}, err
@@ -181,6 +187,10 @@ func loadConfigIfExists(path string) (cliConfig, error) {
 }
 
 func writeConfig(path string, cfg cliConfig) error {
+	// --config accepts an arbitrary path, so it is as much a file sink as --out.
+	if err := rejectNonRegularOutput(path); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

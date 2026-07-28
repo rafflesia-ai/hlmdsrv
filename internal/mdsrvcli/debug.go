@@ -157,6 +157,15 @@ func (a app) runDebugBundle(ctx context.Context, datasetID string, flags *debugB
 	if err != nil {
 		return debugBundleReport{}, err
 	}
+	// The bundle is staged in a temp file and renamed into place, so a FIFO target
+	// would be silently unlinked and replaced rather than written through, and an
+	// --out naming one of the dataset's own files was overwritten at exit 0.
+	if err := rejectNonRegularOutput(out); err != nil {
+		return debugBundleReport{}, err
+	}
+	if err := rejectDatasetInputOverwrite(store, manifest, out); err != nil {
+		return debugBundleReport{}, err
+	}
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		return debugBundleReport{}, err
 	}

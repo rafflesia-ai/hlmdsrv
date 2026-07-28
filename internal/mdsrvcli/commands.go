@@ -235,6 +235,20 @@ func (a app) ingestCommand() *cobra.Command {
 			if flags.trajectory == "" && flags.trajectoryURL == "" {
 				return fmt.Errorf("one of --trajectory, --trajectory-url, or positional TRAJECTORY is required")
 			}
+			// Validate local inputs up front. A directory or unreadable path otherwise
+			// surfaced from deep in the ingest as internal_error (exit 1), telling the
+			// caller to report a bug over a fixable path. URL inputs are not yet local,
+			// so they are left to the download step.
+			if flags.topology != "" {
+				if err := requireInputFile(flags.topology); err != nil {
+					return err
+				}
+			}
+			if flags.trajectory != "" {
+				if err := requireInputFile(flags.trajectory); err != nil {
+					return err
+				}
+			}
 			store, err := mdsrv.OpenStore(flags.store)
 			if err != nil {
 				return err

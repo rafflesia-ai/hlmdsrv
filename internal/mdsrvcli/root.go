@@ -59,6 +59,24 @@ func (a app) execute(ctx context.Context, args []string) error {
 	// is what makes the documented canceled/130 contract reachable at all.
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// Catching signals turns an uninterruptible process into an unkillable one
+	// whenever the work is parked in a blocking syscall that cancellation cannot
+	// reach (writing to a FIFO with no reader, say): the context is canceled but
+	// nothing is polling it, so the process just sits there. Before signals were
+	// handled at all, the default disposition would have killed it.
+	//
+	// Listen explicitly for a second signal and exit hard, rather than relying on
+	// stop() to restore the default disposition — signal.Stop may leave the signal
+	// ignored rather than fatal, which would make a second Ctrl-C do nothing at
+	// all. One signal asks for a graceful stop; a second is not negotiable.
+	go func() {
+		<-ctx.Done()
+		stop()
+		hard := make(chan os.Signal, 1)
+		signal.Notify(hard, os.Interrupt, syscall.SIGTERM)
+		<-hard
+		os.Exit(130)
+	}()
 	err := root.ExecuteContext(ctx)
 	// The cancellation check precedes the success return on purpose. A long-running
 	// command that shuts down gracefully on SIGINT (`serve`) returns nil, so keying

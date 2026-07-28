@@ -1,6 +1,7 @@
 package mdsrvcli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/rafflesia-ai/hlmdsrv/internal/gromacs"
+	"github.com/rafflesia-ai/hlmdsrv/internal/mdsrv"
 )
 
 type gromacsFlags struct {
@@ -78,7 +80,7 @@ func (a app) gromacsProbeCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			gmx := gromacs.New(gromacs.Options{Command: flags.command})
-			if err := gmx.RequireAvailable(); err != nil {
+			if err := requireVerifiedGromacs(cmd.Context(), gmx); err != nil {
 				return err
 			}
 			if err := requireInputFile(args[0]); err != nil {
@@ -122,10 +124,13 @@ func (a app) gromacsConvertCommand() *cobra.Command {
 				return err
 			}
 			gmx := gromacs.New(gromacs.Options{Command: flags.command})
-			if err := gmx.RequireAvailable(); err != nil {
+			if err := requireVerifiedGromacs(cmd.Context(), gmx); err != nil {
 				return err
 			}
 			if err := gmx.Convert(cmd.Context(), gromacs.ConvertOptions{Input: args[0], Output: flags.out}); err != nil {
+				return err
+			}
+			if err := requireProducedFile(flags.out, "gromacs convert"); err != nil {
 				return err
 			}
 			report := struct {
@@ -168,7 +173,7 @@ func (a app) gromacsExtractCommand() *cobra.Command {
 				return err
 			}
 			gmx := gromacs.New(gromacs.Options{Command: flags.command})
-			if err := gmx.RequireAvailable(); err != nil {
+			if err := requireVerifiedGromacs(cmd.Context(), gmx); err != nil {
 				return err
 			}
 			var extractedTime float64
@@ -204,6 +209,9 @@ func (a app) gromacsExtractCommand() *cobra.Command {
 				}); err != nil {
 					return err
 				}
+			}
+			if err := requireProducedFile(flags.out, "gromacs extract"); err != nil {
+				return err
 			}
 			report := struct {
 				Topology   string  `json:"topology"`
@@ -282,11 +290,95 @@ func requireInputFile(path string) error {
 // target. Directories are left to the caller: several commands legitimately write
 // into one.
 func rejectNonRegularOutput(path string) error {
+	return rejectNonRegularPath(path, "write to")
+}
+
+// requireVerifiedGromacs gates a run path on GROMACS actually being GROMACS, not
+// merely on a PATH hit. RequireAvailable only does a lookup, so `--gmx-command
+// /usr/bin/true` sailed past it and each command then failed in its own way —
+// render_failed here, internal_error there — for what is one condition: the
+// configured backend is not usable. doctor and capabilities already report this
+// correctly; this puts the run paths on the same footing, at the cost of one
+// `gmx --version` per invocation.
+func requireVerifiedGromacs(ctx context.Context, gmx gromacs.Client) error {
+	if err := gmx.RequireAvailable(); err != nil {
+		return err
+	}
+	capability := gmx.Check(ctx)
+	if !capability.Available {
+		message := capability.Error
+		if message == "" {
+			message = "the configured GROMACS command is not usable"
+		}
+		return codedErrorf(codeMissingBackend, "gromacs command %q is not usable: %s", gmx.CommandString(), message)
+	}
+	return nil
+}
+
+// requireProducedFile verifies that an external tool actually produced the output
+// it was asked for. GROMACS is invoked through a caller-supplied command, and
+// availability is only a PATH lookup, so a wrong or stub binary (or a gmx that
+// failed without a non-zero status) left the command reporting success with an
+// `output` path that does not exist. Trust the exit status, then verify.
+func requireProducedFile(path, produced string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return codedErrorf(codeRenderFailed, "%s reported success but %s was not created", produced, path)
+	}
+	if info.Size() == 0 {
+		return codedErrorf(codeRenderFailed, "%s reported success but %s is empty", produced, path)
+	}
+	return nil
+}
+
+// rejectDatasetInputOverwrite refuses an output path that resolves to one of the
+// dataset's own files. ensureOutputPathAgainst covers commands that already hold
+// resolved input paths, but the dataset-oriented commands (frames get, pack,
+// debug bundle) only know a dataset id, and each of them truncated a store's own
+// topology at exit 0 when pointed at it. Resolution goes through the store so a
+// relative --out and a store-relative manifest path compare as the same file, and
+// identity is os.SameFile so hardlinks and symlinks are caught too.
+func rejectDatasetInputOverwrite(store mdsrv.Store, m mdsrv.Manifest, out string) error {
+	if strings.TrimSpace(out) == "" {
+		return nil
+	}
+	outInfo, err := os.Stat(out)
+	if err != nil {
+		return nil // nothing there yet: nothing to destroy
+	}
+	relatives := []string{m.Inputs.Topology.Path}
+	for _, trajectory := range m.Inputs.Trajectories {
+		relatives = append(relatives, trajectory.Path)
+	}
+	for _, relative := range relatives {
+		if strings.TrimSpace(relative) == "" {
+			continue
+		}
+		resolved, resolveErr := store.SafeResolvePath(relative)
+		if resolveErr != nil {
+			continue
+		}
+		inputInfo, statErr := os.Stat(resolved)
+		if statErr != nil {
+			continue
+		}
+		if os.SameFile(outInfo, inputInfo) {
+			return codedErrorf(codeInvalidInput, "output %s is an input of dataset %s; refusing to overwrite it", out, m.Metadata.ID)
+		}
+	}
+	return nil
+}
+
+// rejectNonRegularPath refuses a special file on either side of an I/O. Opening a
+// FIFO blocks in open(2) in *both* directions — for write until a reader appears,
+// for read until a writer does — and that block is invisible to context
+// cancellation, so such a path has to be refused rather than merely interrupted.
+func rejectNonRegularPath(path, verb string) error {
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() || info.Mode().IsRegular() {
 		return nil
 	}
-	return codedErrorf(codeInvalidInput, "%s is not a regular file; refusing to write to it", path)
+	return codedErrorf(codeInvalidInput, "%s is not a regular file; refusing to %s it", path, verb)
 }
 
 // ensureOutputPathAgainst prepares an output path, refusing two destructive

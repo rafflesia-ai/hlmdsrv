@@ -271,8 +271,16 @@ func (a app) packCommand() *cobra.Command {
 				out = args[0] + ".mdsrvx"
 			}
 			// PackDataset does its own overwrite check but opens the path directly, so
-			// a FIFO/device target was unlinked and replaced with a regular file.
+			// a FIFO/device target was unlinked and replaced with a regular file, and
+			// an --out naming one of the dataset's own files was truncated at exit 0.
 			if err := rejectNonRegularOutput(out); err != nil {
+				return err
+			}
+			packManifest, err := store.LoadDataset(args[0])
+			if err != nil {
+				return err
+			}
+			if err := rejectDatasetInputOverwrite(store, packManifest, out); err != nil {
 				return err
 			}
 			report, err := store.PackDataset(args[0], out, flags.force)
@@ -381,6 +389,15 @@ func (a app) runFrame(ctx context.Context, datasetID string, frameIndex int, fla
 	}
 	frame, err := frameWithPolicy(ctx, store, m, datasetID, frameIndex, flags.atomSubset, flags.backend, flags.gmxCommand)
 	if err != nil {
+		return err
+	}
+	// Guard before either format writes: opening a FIFO with no reader blocks in
+	// open(2), which cancellation cannot reach, so this must be refused rather
+	// than merely interrupted.
+	if err := rejectNonRegularOutput(flags.out); err != nil {
+		return err
+	}
+	if err := rejectDatasetInputOverwrite(store, m, flags.out); err != nil {
 		return err
 	}
 	format := outputFormat(flags.format, flags.out, "json")
@@ -1117,6 +1134,12 @@ func outputFormat(format, out, fallback string) string {
 }
 
 func writeJSONFile(path string, value any) error {
+	// Every file sink needs this guard, not just the ones with a --force flag: a
+	// FIFO target blocks forever in open(2), which no amount of cancellation can
+	// interrupt, and a device/socket target is never what the caller meant.
+	if err := rejectNonRegularOutput(path); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

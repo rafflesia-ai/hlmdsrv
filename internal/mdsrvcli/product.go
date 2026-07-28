@@ -1040,8 +1040,8 @@ func (a app) runExport(ctx context.Context, datasetID string, flags *exportFlags
 		groupInput = []byte("export\n")
 	}
 	gmx := gromacs.New(gromacs.Options{Command: flags.gmxCommand})
-	if !gmx.Available() {
-		return fmt.Errorf("gromacs command %q was not found", gmx.CommandString())
+	if err := requireVerifiedGromacs(ctx, gmx); err != nil {
+		return err
 	}
 	if err := gmx.Export(ctx, gromacs.ExportOptions{
 		Topology:   topologyPath,
@@ -1053,6 +1053,9 @@ func (a app) runExport(ctx context.Context, datasetID string, flags *exportFlags
 		GroupInput: groupInput,
 		IndexPath:  indexPath,
 	}); err != nil {
+		return err
+	}
+	if err := requireProducedFile(flags.out, "gromacs export"); err != nil {
 		return err
 	}
 	report := map[string]any{"dataset": datasetID, "output": flags.out}

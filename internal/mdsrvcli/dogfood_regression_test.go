@@ -11,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/rafflesia-ai/hlmdsrv/internal/mdsrv"
 )
 
 // Regression tests for the defects found by dogfooding the carved-out CLI. Each
@@ -287,6 +289,95 @@ func TestRequireInputFile(t *testing.T) {
 		if ErrorCode(err) != string(codeInvalidInput) {
 			t.Errorf("%s: code = %q, want %q", name, ErrorCode(err), codeInvalidInput)
 		}
+	}
+}
+
+// Completeness sweep after the first fix pass: the guards had only been wired at
+// the sites probed by hand, so the dataset-oriented commands (frames get, pack,
+// debug bundle) still truncated a store's own topology at exit 0.
+func TestRejectDatasetInputOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	topology := filepath.Join(dir, "structure.gro")
+	trajectory := filepath.Join(dir, "traj.xtc")
+	for _, path := range []string{topology, trajectory} {
+		if err := os.WriteFile(path, []byte("payload"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store, err := mdsrv.OpenStore(filepath.Join(dir, "store"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := store.Ingest(mdsrv.IngestOptions{ID: "d", Topology: topology, Trajectory: trajectory})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	storedTopology, err := store.SafeResolvePath(m.Inputs.Topology.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rejectDatasetInputOverwrite(store, m, storedTopology); err == nil {
+		t.Fatal("an output naming the dataset's own topology must be refused")
+	} else if ErrorCode(err) != string(codeInvalidInput) {
+		t.Errorf("code = %q, want %q", ErrorCode(err), codeInvalidInput)
+	}
+
+	// An unrelated path, and an output that does not exist yet, are both fine.
+	if err := rejectDatasetInputOverwrite(store, m, filepath.Join(dir, "elsewhere.xtc")); err != nil {
+		t.Errorf("an unrelated output must be accepted: %v", err)
+	}
+	if err := rejectDatasetInputOverwrite(store, m, ""); err != nil {
+		t.Errorf("an empty output must be accepted: %v", err)
+	}
+}
+
+// An external tool invoked through a caller-supplied command can exit 0 without
+// producing anything (`--gmx-command /usr/bin/true`), which left export and the
+// gromacs bridge reporting success with an `output` path that did not exist.
+func TestRequireProducedFile(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "never-written.xtc")
+	if err := requireProducedFile(missing, "gromacs export"); err == nil {
+		t.Fatal("a missing output must not pass as success")
+	} else if ErrorCode(err) != string(codeRenderFailed) {
+		t.Errorf("code = %q, want %q", ErrorCode(err), codeRenderFailed)
+	}
+
+	empty := filepath.Join(dir, "empty.xtc")
+	if err := os.WriteFile(empty, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireProducedFile(empty, "gromacs export"); err == nil {
+		t.Error("an empty output must not pass as success")
+	}
+
+	real := filepath.Join(dir, "real.xtc")
+	if err := os.WriteFile(real, []byte("frames"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireProducedFile(real, "gromacs export"); err != nil {
+		t.Errorf("a non-empty output must be accepted: %v", err)
+	}
+}
+
+// Reading a FIFO blocks in open(2) exactly as writing one does, so the config
+// path has to be screened on the way in as well as on the way out.
+func TestRejectNonRegularPathGuardsBothDirections(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no FIFOs on windows")
+	}
+	fifo := filepath.Join(t.TempDir(), "pipe")
+	if err := syscall.Mkfifo(fifo, 0o644); err != nil {
+		t.Skipf("mkfifo unsupported here: %v", err)
+	}
+	for _, verb := range []string{"read", "write to"} {
+		if err := rejectNonRegularPath(fifo, verb); err == nil {
+			t.Errorf("a FIFO must be refused for %q", verb)
+		}
+	}
+	if _, err := loadConfig(fifo); err == nil {
+		t.Error("loadConfig must refuse a FIFO rather than block on it")
 	}
 }
 
