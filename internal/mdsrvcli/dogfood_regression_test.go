@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -611,9 +612,11 @@ func TestAnalysisTracePathIsKeyedOnID(t *testing.T) {
 // was installed and their arguments were the problem. Only the genuine
 // unavailability signals may map to missing_backend.
 func TestClassifierDistinguishesBackendFromArguments(t *testing.T) {
+	// An absent selection is an ABSENT ARGUMENT and classifies as missing_input,
+	// alongside every other "you did not supply X" (see
+	// TestAbsentRequiredArgumentIsAlwaysMissingInput). What must never happen is
+	// either of them reading as missing_backend.
 	argumentFailures := []string{
-		`python backend failed: python backend analyze: selection is required; GROMACS fallback failed: atom index selection is required`,
-		`python backend failed: python backend analyze: contacts analysis requires selections a, b`,
 		`python backend failed: GROMACS fallback failed: unsupported GROMACS fallback analysis "sasa"`,
 	}
 	for _, message := range argumentFailures {
@@ -807,5 +810,55 @@ func TestNullDeviceIsAcceptedOnlyWhereItWorks(t *testing.T) {
 	}
 	if ErrorCode(err) != string(codeInvalidInput) {
 		t.Errorf("refusal should be invalid_input, got %q", ErrorCode(err))
+	}
+}
+
+// Thirteenth pass, from reviewing the twelve fixes as one diff rather than
+// probing. Two coupling defects the round-by-round testing could not see.
+
+// An absent required argument must classify the same way whether cobra enforced
+// it or our own code checked it. It did not: MarkFlagRequired errors were lumped
+// in with usage errors (invalid_input) while hand-written "--out is required"
+// checks gave missing_input, so the code depended on which layer noticed.
+func TestAbsentRequiredArgumentIsAlwaysMissingInput(t *testing.T) {
+	for _, message := range []string{
+		`required flag(s) "file" not set`, // cobra
+		"--out is required",               // hand-checked
+		"--id is required",
+		"contacts analysis requires selections a, b",
+	} {
+		if got := classifyErrorCode(errors.New(message)); got != codeMissingInput {
+			t.Errorf("an absent argument should be missing_input, got %q for: %s", got, message)
+		}
+	}
+	// "required flag" must no longer be treated as a usage error, or Execute would
+	// re-tag it as invalid_input before classification ever runs.
+	if isUsageError(errors.New(`required flag(s) "file" not set`)) {
+		t.Error("an absent required flag is not a usage error; it is a missing input")
+	}
+	// Genuine usage errors are unaffected.
+	for _, message := range []string{"unknown flag: --nope", "unknown command \"x\""} {
+		if !isUsageError(errors.New(message)) {
+			t.Errorf("%q should still be a usage error", message)
+		}
+	}
+}
+
+// When neither analysis engine can run, the caller has no usable backend — but
+// the composite error matched no pattern and landed in internal_error, telling
+// them to report a bug about software they had simply not installed. A typed
+// failure from the GROMACS fallback still wins, because that is the engine that
+// can succeed when Python is absent, so its complaint is the actionable one.
+func TestNoUsableAnalysisBackendIsMissingBackend(t *testing.T) {
+	composite := errors.New("python backend failed: /usr/bin/false backend analyze: exit status 1; " +
+		"GROMACS fallback failed: /usr/bin/false trjconv failed: exit status 1")
+	if got := classifyErrorCode(composite); got != codeMissingBackend {
+		t.Errorf("both engines unusable should be missing_backend, got %q", got)
+	}
+	// A typed fallback error is unwrapped by ClassifyError and keeps its own code.
+	typed := fmt.Errorf("python backend failed: no mdtraj; GROMACS fallback failed: %w",
+		codedErrorf(codeInvalidInput, "atom index selection is required"))
+	if got := ClassifyError(typed).Code; got != codeInvalidInput {
+		t.Errorf("a typed fallback failure should win, got %q", got)
 	}
 }

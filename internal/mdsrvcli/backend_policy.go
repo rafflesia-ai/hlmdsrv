@@ -53,6 +53,12 @@ func analyzeWithPolicy(ctx context.Context, store mdsrv.Store, manifest mdsrv.Ma
 		}
 		fallback, fallbackErr := analyzeWithGromacsFallback(ctx, store, manifest, datasetID, gromacsRequest, gromacsCommand)
 		if fallbackErr != nil {
+			// The fallback is wrapped with %w on purpose: GROMACS is the engine that
+			// can still succeed when Python is absent, so its failure is the
+			// actionable one and its classification should win. (Flattening both to
+			// text was tried and is worse: with neither engine usable the composite
+			// matches no pattern and lands in internal_error, telling the caller to
+			// report a bug about a backend they simply have not installed.)
 			return mdsrv.Trace{}, fmt.Errorf("python backend failed: %v; GROMACS fallback failed: %w", err, fallbackErr)
 		}
 		return fallback, nil

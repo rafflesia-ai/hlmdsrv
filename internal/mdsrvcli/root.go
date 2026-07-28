@@ -202,7 +202,10 @@ func isUsageError(err error) bool {
 		"requires at least",
 		"requires at most",
 		"accepts between",
-		"required flag",
+		// "required flag(s) ... not set" is deliberately NOT here: an absent
+		// required argument is missing_input, the same as the hand-checked
+		// "--out is required" cases. Whether cobra or our own code noticed it
+		// should not change the code the caller sees.
 	} {
 		if strings.Contains(msg, p) {
 			return true

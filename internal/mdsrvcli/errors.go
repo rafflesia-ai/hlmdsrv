@@ -187,10 +187,8 @@ func classifyErrorCode(err error) errorCode {
 		// missed by every fix since: the message matched no pattern, so a bad id
 		// exited 1 and told the caller to report a bug about their own typo.
 		strings.Contains(message, "invalid id"),
-		// Analysis arguments the caller can supply: a required selection, or an
-		// analysis the chosen fallback does not implement.
-		strings.Contains(message, "selection is required"),
-		strings.Contains(message, "requires selections"),
+		// A *missing* selection is an absent required argument and belongs with
+		// missing_input below, alongside every other "you did not supply X".
 		// Every "unsupported X" in this codebase names something the caller chose --
 		// an analysis type, a backend, an output format, a shell, a provider, an
 		// encoding. None is an internal fault. MDAnalysis, for instance, implements
@@ -224,11 +222,24 @@ func classifyErrorCode(err error) errorCode {
 	case strings.Contains(message, "render failed"),
 		strings.Contains(message, "visualization failed"):
 		return codeRenderFailed
+	// Something the caller had to supply is absent, or something they named cannot
+	// be found. The boundary against invalid_input is "absent" vs "wrong", and it
+	// must not depend on whether cobra or our own code noticed.
 	case strings.Contains(message, "not found"),
 		strings.Contains(message, "no such file"),
 		strings.Contains(message, "does not exist"),
-		strings.Contains(message, "is required"):
+		strings.Contains(message, "is required"),
+		strings.Contains(message, "requires selections"),
+		strings.Contains(message, "required flag"):
 		return codeMissingInput
+	// Last resort before internal_error: both analysis engines failed and nothing
+	// more specific matched, so the machine has no usable backend. This has to come
+	// after every specific case — placed early it hijacked composites whose
+	// fallback merely *refused* the analysis ("unsupported GROMACS fallback
+	// analysis"), which means the backend ran, not that it is missing. A typed
+	// failure never reaches here at all, because ClassifyError unwraps first.
+	case strings.Contains(message, "python backend failed") && strings.Contains(message, "gromacs fallback failed"):
+		return codeMissingBackend
 	default:
 		return codeInternalError
 	}

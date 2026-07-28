@@ -96,6 +96,24 @@ A pass over surfaces the first two rounds never touched.
 - **More `internal_error` misclassification**: `publish static --out <regular
   file>`, `pack --out <dir>`, and malformed or empty batch JSONL all exited 1.
 
+### Fixed — thirteenth pass (coupling between the fixes)
+
+Reviewed the twelve preceding commits as a single diff instead of probing, which
+surfaces coupling that round-by-round testing cannot see.
+
+- **An absent required argument classified differently depending on which layer
+  noticed it.** Cobra's `MarkFlagRequired` errors were lumped in with usage
+  errors (`invalid_input`) while hand-written `--out is required` checks gave
+  `missing_input`. The boundary is now "absent" → `missing_input`, "wrong" →
+  `invalid_input`, regardless of who caught it, matching the documented meaning
+  of `missing_input` ("a required flag is absent").
+- **No usable analysis backend reported `internal_error`.** When neither the
+  Python engine nor the GROMACS fallback can run, the composite error matched no
+  pattern and told the caller to file a bug about software they had not
+  installed. Now `missing_backend` — but only as a last resort, after every
+  specific case, so a fallback that merely *refused* the analysis (`unsupported
+  GROMACS fallback analysis`) still classifies on its own terms.
+
 ### Fixed — twelfth pass (audit of the preceding fixes)
 
 - **The classifier could mask a real bug as the caller's mistake.** Error codes
