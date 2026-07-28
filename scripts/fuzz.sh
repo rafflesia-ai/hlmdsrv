@@ -12,6 +12,10 @@
 #   scripts/fuzz.sh            # 60s per target
 #   scripts/fuzz.sh 300s       # longer, for a real hunt
 #
+# Watch the disk on a long run: a full pass at 300s took the go-build cache to
+# 17G here and filled the volume, which surfaces as a bogus "failure" (the test
+# harness cannot make a TempDir). `go clean -cache -fuzzcache` afterwards.
+#
 # A failing input is written to internal/<pkg>/testdata/fuzz/<Target>/ and becomes
 # a permanent regression seed: commit it.
 set -uo pipefail
@@ -57,12 +61,25 @@ for entry in $TARGETS; do
     echo "ok (${execs:-seeds only})"
     continue
   fi
+  # Go saves the offending input on ANY failure during fuzzing, including ones
+  # that are nothing to do with the code: a full disk, an fd limit, a killed
+  # worker. So "an input was saved" does not mean "a defect was found" -- checking
+  # only for the file reported a disk-full failure as a parser bug on this
+  # script's first real use, and left a healthy input sitting in testdata/fuzz
+  # masquerading as a regression seed. Screen the environmental failures first.
+  if printf '%s' "$output" | grep -qE 'no space left on device|too many open files|cannot allocate memory|signal: killed'; then
+    inconclusive=1
+    echo "inconclusive (environment, not the code -- rerun after fixing it)"
+    printf '%s\n' "$output" | grep -oE '[^ ]*(no space left on device|too many open files|cannot allocate memory|signal: killed)' | head -1 | sed 's/^/    /'
+    # Nothing was learned about the code, so do not leave a "crasher" behind.
+    rm -rf "${pkg%/}/testdata/fuzz/${target}"
+    continue
+  fi
   # A real find writes the input under testdata/fuzz/<Target>/. Without one, the
   # failure is the fuzzing harness itself -- most often "context deadline
   # exceeded", which a loaded machine produces at short -fuzztime and which does
-  # not reproduce. Reporting that as a defect would train the reader to ignore
-  # this script, so it is called out as inconclusive instead.
-  crasher_dir="$(dirname "${pkg%/}")/$(basename "${pkg%/}")/testdata/fuzz/${target}"
+  # not reproduce.
+  crasher_dir="${pkg%/}/testdata/fuzz/${target}"
   if [ -d "$crasher_dir" ] && [ -n "$(ls -A "$crasher_dir" 2>/dev/null)" ]; then
     failed=1
     echo "FAIL -- input saved to $crasher_dir"

@@ -93,9 +93,15 @@ func FuzzParseGROFrame(f *testing.F) {
 	f.Add("")
 	f.Add("x\n-1\n")
 	f.Add("x\n999999999\n0.1 0.2 0.3\n")
+	// ParseGROFrame reads from a path, so the input has to reach the disk — but the
+	// scratch directory is created ONCE here rather than per execution. Calling
+	// t.TempDir() inside f.Fuzz makes a fresh directory for every input, which held
+	// this target to ~700 execs/sec against 30,000+ for the others (a 40x loss of
+	// exploration for the same wall time) and churned enough directories during a
+	// 300s run to fill the volume, surfacing as a spurious failure.
+	dir := f.TempDir()
+	path := filepath.Join(dir, "f.gro")
 	f.Fuzz(func(t *testing.T, content string) {
-		dir := t.TempDir()
-		path := filepath.Join(dir, "f.gro")
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Skip()
 		}

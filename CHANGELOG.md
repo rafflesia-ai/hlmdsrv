@@ -96,6 +96,29 @@ A pass over surfaces the first two rounds never touched.
 - **More `internal_error` misclassification**: `publish static --out <regular
   file>`, `pack --out <dir>`, and malformed or empty batch JSONL all exited 1.
 
+### Changed — sixteenth pass (soak)
+
+No product defects found. A long soak (300s per fuzz target, sustained server and
+job-queue load) surfaced two problems in the *testing*, both fixed.
+
+- **`FuzzParseGROFrame` called `t.TempDir()` inside the fuzz loop**, creating a
+  fresh directory per execution. It ran at ~700 execs/sec against 30,000+ for the
+  other targets — a 40x loss of exploration for the same wall time — and churned
+  enough directories over a long run to fill the volume, which then surfaced as a
+  spurious "failure". The scratch directory is now created once; throughput is
+  ~4x better and the churn is gone.
+- **`scripts/fuzz.sh` reported a full disk as a code defect.** Go saves the
+  offending input on *any* fuzz failure, so "an input was saved" does not mean "a
+  defect was found". Environmental failures (no space, fd limit, OOM, killed) are
+  now screened first and reported as inconclusive, and the misleading input is
+  removed rather than left behind masquerading as a regression seed.
+
+Soak results, all clean: 1960 mixed HTTP requests with zero errors, file
+descriptors flat, and RSS returning to baseline; 60 concurrent job submissions
+all accounted for as 202 or 429; `--job-prune-on-start` removing exactly the
+terminal jobs and preserving the in-flight ones; and after all of it the store
+still validates and its frames still match raw `gmx trjconv` byte for byte.
+
 ### Changed — fourteenth pass (classifier structure)
 
 No behaviour change: all 61 corpus classifications are byte-identical before and
