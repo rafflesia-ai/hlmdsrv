@@ -105,6 +105,118 @@ func ExitCode(err error) int {
 	}
 }
 
+// classificationRule maps a family of error messages to a code. Rules are
+// evaluated in order and the first match wins, so ORDER IS PART OF THE CONTRACT:
+// a broad rule placed above a narrow one silently swallows it. That has happened
+// twice while this table was being built, which is why the ordering is data here
+// rather than the shape of a switch — the sequence can be read, named, and
+// asserted in tests instead of inferred from indentation.
+type classificationRule struct {
+	// name identifies the rule in failures and in the priority tests.
+	name  string
+	code  errorCode
+	match func(message string) bool
+}
+
+func contains(needles ...string) func(string) bool {
+	return func(message string) bool {
+		for _, needle := range needles {
+			if strings.Contains(message, needle) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+func containsAll(needles ...string) func(string) bool {
+	return func(message string) bool {
+		for _, needle := range needles {
+			if !strings.Contains(message, needle) {
+				return false
+			}
+		}
+		return true
+	}
+}
+
+// classificationRules is ordered most-specific to least. The comments explain why
+// each sits where it does; moving one is a behaviour change.
+var classificationRules = []classificationRule{
+	// A Go runtime panic is definitionally our bug, never the caller's. It leads
+	// because the rules below match substrings and some fragments ("out of range")
+	// also occur in panic text: without this a real defect would be reported as the
+	// caller's invalid_input, which is the worst direction to be wrong.
+	{"runtime-panic", codeInternalError, contains("runtime error:", "nil pointer dereference")},
+
+	// Manifest/store data written by an incompatible version, and manifest shape
+	// failures. Above the generic "unsupported " rule, which would otherwise claim
+	// the version variants.
+	{"manifest-shape", codeInvalidManifest, contains(
+		"schema validation failed", "decode yaml", "decode json",
+		"version is required", "metadata.id is required",
+		"job requires at least one trajectory")},
+	{"manifest-version", codeInvalidManifest, contains(
+		"unsupported manifest version", "unsupported store version", "unsupported job version")},
+
+	// An engine or remote server that cannot run at all. Matches the specific
+	// unavailability signals, never the generic "python backend failed" prefix that
+	// rides on every python-bridge error, which would turn an argument mistake into
+	// "install MDTraj".
+	{"gromacs-unusable", codeMissingBackend, func(m string) bool {
+		return strings.Contains(m, "gromacs command") &&
+			(strings.Contains(m, "not found") || strings.Contains(m, "not usable"))
+	}},
+	{"python-unavailable", codeMissingBackend, contains(
+		"trajectory backend unavailable", "install mdtraj",
+		"no python interpreter", "python backend is unavailable")},
+	{"server-unreachable", codeMissingBackend, contains(
+		"connection refused", "no such host", "network is unreachable", "dial tcp")},
+
+	// The caller supplied something wrong: a path of the wrong kind, a bad flag
+	// value, a malformed id or selection, or a choice the tool does not implement.
+	{"path-wrong-kind", codeInvalidInput, contains(
+		"not a directory", "is a directory", "is not a regular file", "is not a valid")},
+	{"flag-range", codeInvalidInput, contains(
+		"must be at least", "must be greater", "must be positive", "cannot be negative")},
+	// Anchored on our own wording: bare "out of range" and "cannot convert" also
+	// belong to the Go runtime and reflection.
+	{"selection-malformed", codeInvalidInput, func(m string) bool {
+		return containsAll("atom index", "out of range")(m) ||
+			contains("invalid atom index selection", "invalid descending range",
+				"unknown selection kind", "cannot convert atom-index selection")(m)
+	}},
+	{"id-malformed", codeInvalidInput, contains("invalid id")},
+	// Every "unsupported X" here names a caller's choice — analysis type, backend,
+	// format, shell, provider, encoding. Below manifest-version, which claims the
+	// version spellings first.
+	{"unsupported-choice", codeInvalidInput, contains("unsupported ")},
+
+	{"timeout", codeBackendTimeout, contains("deadline exceeded", "timed out", "timeout")},
+	{"unsafe-path", codeUnsafePath, contains(
+		"escapes store root", "outside allowed", "outside the source store", "path escapes")},
+	// A check that ran and did not pass, or a configured resource limit doing its
+	// job — outcomes, not faults.
+	{"validation", codeValidationFailed, contains(
+		"validation failed", "verification failed", "check failed", "exceeding max_")},
+	{"conflict", codeConflict, contains("already exists", "pass --force")},
+	{"render", codeRenderFailed, contains("render failed", "visualization failed")},
+
+	// Something required is absent, or something named cannot be found. The
+	// boundary against invalid_input is "absent" vs "wrong", and it must not depend
+	// on whether cobra or our own code noticed.
+	{"absent", codeMissingInput, contains(
+		"not found", "no such file", "does not exist",
+		"is required", "requires selections", "required flag")},
+
+	// Last resort. Both analysis engines failed and nothing more specific matched,
+	// so there is no usable backend. It must stay below every specific rule: placed
+	// higher it claimed composites whose fallback merely *refused* the analysis
+	// ("unsupported GROMACS fallback analysis"), where the backend ran and is not
+	// missing. A typed error never reaches here — ClassifyError unwraps first.
+	{"no-analysis-backend", codeMissingBackend, containsAll("python backend failed", "gromacs fallback failed")},
+}
+
 func classifyErrorCode(err error) errorCode {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return codeBackendTimeout
@@ -116,131 +228,22 @@ func classifyErrorCode(err error) errorCode {
 		return codeMissingInput
 	}
 	message := strings.ToLower(err.Error())
-	// A Go runtime panic is definitionally our bug, never the caller's. This is
-	// checked first because the patterns below match on substrings, and some of
-	// them ("out of range") also appear in panic text: without this guard a real
-	// defect would be reported as invalid_input, telling the caller to fix their
-	// own call. internal_error exists precisely for this case.
-	if strings.Contains(message, "runtime error:") || strings.Contains(message, "nil pointer dereference") {
-		return codeInternalError
+	for _, rule := range classificationRules {
+		if rule.match(message) {
+			return rule.code
+		}
 	}
-	switch {
-	case strings.Contains(message, "schema validation failed"),
-		strings.Contains(message, "decode yaml"),
-		strings.Contains(message, "decode json"),
-		strings.Contains(message, "version is required"),
-		strings.Contains(message, "metadata.id is required"),
-		strings.Contains(message, "job requires at least one trajectory"),
-		// Data written by an incompatible version of the format. Caller-fixable by
-		// migrating, and definitely not an unclassified internal fault.
-		strings.Contains(message, "unsupported manifest version"),
-		strings.Contains(message, "unsupported store version"),
-		strings.Contains(message, "unsupported job version"):
-		return codeInvalidManifest
-	case strings.Contains(message, "gromacs command") && strings.Contains(message, "not found"),
-		strings.Contains(message, "gromacs command") && strings.Contains(message, "not usable"),
-		// Match the specific unavailability signals, NOT the generic "python backend
-		// failed" prefix that every python-bridge error carries. That prefix made an
-		// argument mistake ("selection is required") report as a missing backend,
-		// telling the caller to install MDTraj while MDTraj was installed and working.
-		strings.Contains(message, "trajectory backend unavailable"),
-		strings.Contains(message, "install mdtraj"),
-		strings.Contains(message, "no python interpreter"),
-		strings.Contains(message, "python backend is unavailable"),
-		// A remote --server that cannot be reached is a backend that is not
-		// available, not an unclassified internal fault. Without this, pointing
-		// `jobs` at a dead server reported internal_error, whose documented meaning
-		// tells the caller to file a bug rather than check the address.
-		strings.Contains(message, "connection refused"),
-		strings.Contains(message, "no such host"),
-		strings.Contains(message, "network is unreachable"),
-		strings.Contains(message, "dial tcp"):
-		return codeMissingBackend
-	// A path that exists but is the wrong kind of thing, or an output the caller
-	// pointed somewhere unusable. These are fixable at the call site, so they must
-	// not fall through to internal_error, which the error table reserves for
-	// "unclassified, report it".
-	case strings.Contains(message, "not a directory"),
-		strings.Contains(message, "is a directory"),
-		strings.Contains(message, "is not a regular file"),
-		// Explicit flag-range validation ("--frames must be at least 2",
-		// "--workers cannot be negative"). These are returned as plain errors from
-		// RunE, so without a pattern they land in internal_error and tell the caller
-		// to file a bug about their own typo. The "--x is required" variants are
-		// already covered by the missing_input branch below.
-		strings.Contains(message, "must be at least"),
-		strings.Contains(message, "must be greater"),
-		strings.Contains(message, "must be positive"),
-		strings.Contains(message, "cannot be negative"),
-		// A file handed to `unpack` that is not a zip.
-		strings.Contains(message, "is not a valid"),
-		// Selection expressions and dialects the caller can correct. These are
-		// deliberately anchored on our own wording rather than on bare fragments
-		// like "out of range" or "cannot convert", which also occur in Go runtime
-		// and reflection errors.
-		strings.Contains(message, "atom index") && strings.Contains(message, "out of range"),
-		strings.Contains(message, "invalid atom index selection"),
-		strings.Contains(message, "invalid descending range"),
-		strings.Contains(message, "unknown selection kind"),
-		strings.Contains(message, "cannot convert atom-index selection"),
-		// A malformed dataset/selection id. Flagged in the first dogfood round and
-		// missed by every fix since: the message matched no pattern, so a bad id
-		// exited 1 and told the caller to report a bug about their own typo.
-		strings.Contains(message, "invalid id"),
-		// A *missing* selection is an absent required argument and belongs with
-		// missing_input below, alongside every other "you did not supply X".
-		// Every "unsupported X" in this codebase names something the caller chose --
-		// an analysis type, a backend, an output format, a shell, a provider, an
-		// encoding. None is an internal fault. MDAnalysis, for instance, implements
-		// neither sasa, rmsf nor hbonds, and saying so is a capability answer, not a
-		// crash report. (The version variants are handled as invalid_manifest above.)
-		strings.Contains(message, "unsupported "):
-		return codeInvalidInput
-	case strings.Contains(message, "deadline exceeded"),
-		strings.Contains(message, "timed out"),
-		strings.Contains(message, "timeout"):
-		return codeBackendTimeout
-	case strings.Contains(message, "escapes store root"),
-		strings.Contains(message, "outside allowed"),
-		strings.Contains(message, "outside the source store"),
-		strings.Contains(message, "path escapes"):
-		return codeUnsafePath
-	case strings.Contains(message, "validation failed"),
-		strings.Contains(message, "verification failed"),
-		// A check that ran and did not pass (compat check) is a validation outcome,
-		// not an unclassified fault.
-		strings.Contains(message, "check failed"),
-		// A resource limit doing its job. runtime.max_atoms/max_frames/max_chunk_bytes
-		// exist to bound a job for CI or untrusted input, so tripping one is the
-		// policy working, not an unclassified fault — it was landing in
-		// internal_error, which tells the caller to report a bug.
-		strings.Contains(message, "exceeding max_"):
-		return codeValidationFailed
-	case strings.Contains(message, "already exists"),
-		strings.Contains(message, "pass --force"):
-		return codeConflict
-	case strings.Contains(message, "render failed"),
-		strings.Contains(message, "visualization failed"):
-		return codeRenderFailed
-	// Something the caller had to supply is absent, or something they named cannot
-	// be found. The boundary against invalid_input is "absent" vs "wrong", and it
-	// must not depend on whether cobra or our own code noticed.
-	case strings.Contains(message, "not found"),
-		strings.Contains(message, "no such file"),
-		strings.Contains(message, "does not exist"),
-		strings.Contains(message, "is required"),
-		strings.Contains(message, "requires selections"),
-		strings.Contains(message, "required flag"):
-		return codeMissingInput
-	// Last resort before internal_error: both analysis engines failed and nothing
-	// more specific matched, so the machine has no usable backend. This has to come
-	// after every specific case — placed early it hijacked composites whose
-	// fallback merely *refused* the analysis ("unsupported GROMACS fallback
-	// analysis"), which means the backend ran, not that it is missing. A typed
-	// failure never reaches here at all, because ClassifyError unwraps first.
-	case strings.Contains(message, "python backend failed") && strings.Contains(message, "gromacs fallback failed"):
-		return codeMissingBackend
-	default:
-		return codeInternalError
+	return codeInternalError
+}
+
+// classifyRuleName reports which rule claimed a message, for tests that pin the
+// priority relationships rather than only the resulting code.
+func classifyRuleName(message string) string {
+	message = strings.ToLower(message)
+	for _, rule := range classificationRules {
+		if rule.match(message) {
+			return rule.name
+		}
 	}
+	return "default"
 }

@@ -96,6 +96,23 @@ A pass over surfaces the first two rounds never touched.
 - **More `internal_error` misclassification**: `publish static --out <regular
   file>`, `pack --out <dir>`, and malformed or empty batch JSONL all exited 1.
 
+### Changed — fourteenth pass (classifier structure)
+
+No behaviour change: all 61 corpus classifications are byte-identical before and
+after, and the end-to-end exit codes are unchanged.
+
+- **The error classifier's ordering is now data rather than switch shape.** Its
+  rules accreted across thirteen rounds into one `switch` where the first match
+  wins, so a broad rule placed above a narrow one silently swallows it — which
+  happened twice while it was being built. Rules are now a named, ordered table
+  with the reason each sits where it does, so the sequence can be read and
+  asserted instead of inferred from indentation.
+- Three tests pin what was previously implicit: a 59-message corpus covering
+  every rule and the adversarial cases from those rounds (verified non-vacuous by
+  deliberately breaking a rule); a priority test asserting *which rule* claims
+  each of the relationships that were got wrong; and a reachability test that
+  fails if any rule becomes unreachable because an earlier one swallowed it.
+
 ### Fixed — thirteenth pass (coupling between the fixes)
 
 Reviewed the twelve preceding commits as a single diff instead of probing, which
