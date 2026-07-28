@@ -172,6 +172,10 @@ func classifyErrorCode(err error) errorCode {
 		strings.Contains(message, "invalid descending range"),
 		strings.Contains(message, "unknown selection kind"),
 		strings.Contains(message, "cannot convert"),
+		// A malformed dataset/selection id. Flagged in the first dogfood round and
+		// missed by every fix since: the message matched no pattern, so a bad id
+		// exited 1 and told the caller to report a bug about their own typo.
+		strings.Contains(message, "invalid id"),
 		// Analysis arguments the caller can supply: a required selection, or an
 		// analysis the chosen fallback does not implement.
 		strings.Contains(message, "selection is required"),

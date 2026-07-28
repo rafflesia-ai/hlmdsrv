@@ -269,12 +269,37 @@ func (ref FileRef) Validate(label string) error {
 	return nil
 }
 
+// windowsReservedNames cannot be used as a filename on Windows, with or without
+// an extension: CON.yaml is as invalid as CON. Ids become filenames
+// (datasets/<id>.yaml, topology/<id>.gro), and this project ships Windows
+// binaries, so accepting one produces a store that simply cannot be read there.
+var windowsReservedNames = map[string]bool{
+	"con": true, "prn": true, "aux": true, "nul": true,
+	"com1": true, "com2": true, "com3": true, "com4": true, "com5": true,
+	"com6": true, "com7": true, "com8": true, "com9": true,
+	"lpt1": true, "lpt2": true, "lpt3": true, "lpt4": true, "lpt5": true,
+	"lpt6": true, "lpt7": true, "lpt8": true, "lpt9": true,
+}
+
 func ValidateID(id string) error {
 	if strings.TrimSpace(id) == "" {
 		return errors.New("is required")
 	}
 	if !idPattern.MatchString(id) {
-		return errors.New("must start with an alphanumeric character and contain only letters, digits, dot, underscore, or dash")
+		return errors.New("invalid id: must start with an alphanumeric character and contain only letters, digits, dot, underscore, or dash")
+	}
+	// Portability, same class as the case-sensitivity check in LoadDataset: a store
+	// should be readable wherever it is taken. Windows strips a trailing dot from a
+	// filename, so "name." and "name" would collide there.
+	if strings.HasSuffix(id, ".") {
+		return errors.New("invalid id: must not end with a dot, which Windows strips from filenames")
+	}
+	stem := id
+	if index := strings.Index(stem, "."); index >= 0 {
+		stem = stem[:index]
+	}
+	if windowsReservedNames[strings.ToLower(stem)] {
+		return fmt.Errorf("invalid id: %q is a reserved device name on Windows and cannot be a filename there", stem)
 	}
 	return nil
 }

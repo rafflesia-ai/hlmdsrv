@@ -88,6 +88,48 @@ func TestLoadDatasetRejectsAnIDThatDoesNotMatchTheManifest(t *testing.T) {
 	}
 }
 
+// Tenth pass, sibling of the case-sensitivity fix: ids become filenames
+// (datasets/<id>.yaml), and this project ships Windows binaries, so an id that
+// cannot be a filename on Windows produces a store that cannot be read there.
+func TestValidateIDRejectsWindowsHostileNames(t *testing.T) {
+	for _, id := range []string{
+		"CON", "con", "NUL", "nul", "PRN", "AUX", "COM1", "com9", "LPT1", "lpt9",
+		"con.yaml", "aux.gro", // reserved with any extension
+		"name.", // Windows strips a trailing dot, colliding with "name"
+	} {
+		if err := ValidateID(id); err == nil {
+			t.Errorf("id %q must be rejected as unusable on Windows", id)
+		}
+	}
+	// Names that merely start with a reserved word are fine — the check must not
+	// be a prefix match.
+	for _, id := range []string{"console", "conf", "auxiliary", "nullable", "com10", "lpt10", "a1", "ok-name_1.2"} {
+		if err := ValidateID(id); err != nil {
+			t.Errorf("id %q must be accepted: %v", id, err)
+		}
+	}
+}
+
+// Every ValidateID failure reads as "invalid id", so the CLI can classify it as
+// caller-fixable instead of letting it fall through to internal_error.
+func TestValidateIDFailuresAreRecognisable(t *testing.T) {
+	for _, id := range []string{"bad id!", "café", "...", "-leading-dash", "CON"} {
+		err := ValidateID(id)
+		if err == nil {
+			t.Errorf("id %q should be rejected", id)
+			continue
+		}
+		if !strings.Contains(err.Error(), "invalid id") {
+			t.Errorf("id %q: message %q should contain \"invalid id\" so it classifies", id, err)
+		}
+	}
+	// The empty case keeps its distinct "is required" wording, which maps to
+	// missing_input rather than invalid_input.
+	if err := ValidateID(""); err == nil || !strings.Contains(err.Error(), "is required") {
+		t.Errorf("empty id should read as required, got: %v", err)
+	}
+}
+
 func TestIsHiddenSidecar(t *testing.T) {
 	for path, want := range map[string]bool{
 		"/store/datasets/._demo.yaml": true,

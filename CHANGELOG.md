@@ -96,6 +96,24 @@ A pass over surfaces the first two rounds never touched.
 - **More `internal_error` misclassification**: `publish static --out <regular
   file>`, `pack --out <dir>`, and malformed or empty batch JSONL all exited 1.
 
+### Fixed — tenth pass (id validation)
+
+- **Dataset ids that cannot be filenames on Windows were accepted.** Ids become
+  filenames (`datasets/<id>.yaml`, `topology/<id>.gro`) and this project ships
+  Windows binaries, but `CON`, `NUL`, `PRN`, `AUX`, `COM1`-`COM9`, `LPT1`-`LPT9`
+  — reserved with any extension, so `aux.gro` too — and a trailing dot were all
+  allowed. A store created on macOS or Linux with such a dataset simply cannot be
+  read on Windows. Now rejected; names that merely begin with a reserved word
+  (`console`, `conf`, `com10`) are unaffected.
+- **A malformed id reported `internal_error`.** Flagged in the very first dogfood
+  round and missed by every fix since: the message matched no classifier pattern,
+  so a bad id exited 1 and told the caller to file a bug about their own typo.
+  Now `invalid_input`.
+
+Checked and found to be a non-issue: Unicode normalization, the natural sibling of
+the case-sensitivity fix. `idPattern` is ASCII-only, so an NFC/NFD mismatch
+between macOS and Linux cannot arise in the first place.
+
 ### Fixed — ninth pass (portability)
 
 - **A wrong-cased dataset id resolved to the wrong dataset.** The manifest path is
