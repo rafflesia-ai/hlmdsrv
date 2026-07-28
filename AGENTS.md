@@ -58,3 +58,19 @@ bin/hlmdsrv completion fish --out completions/hlmdsrv.fish --force
 
 The frozen JSON contracts live in `internal/mdsrvcli/testdata/contracts/` and are checked by
 `scripts/verify-mdsrv-contracts.sh`.
+
+## Fuzzing
+
+The nine fuzz targets ship with seed corpora, so `go test ./...` runs them as ordinary unit
+tests — which proves the seeds pass and nothing more. To actually explore, run them with `-fuzz`:
+
+```sh
+scripts/fuzz.sh          # 60s per target
+scripts/fuzz.sh 300s     # a real hunt
+```
+
+The script fails if a new `Fuzz*` function is not listed in it, so a target cannot be added and
+silently left unfuzzed. A genuine find is written to `internal/<pkg>/testdata/fuzz/<Target>/` —
+commit it, it becomes a permanent regression seed. A failure with *no* saved input is the harness
+rather than a defect (a loaded machine yields "context deadline exceeded" at short `-fuzztime`);
+the script reports that as inconclusive instead of as a finding.
